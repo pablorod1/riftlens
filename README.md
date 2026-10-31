@@ -68,6 +68,6 @@ Los nombres de campeones, objetos y runas vienen traducidos de Data Dragon.
 
 ## Licencia
 
-[MIT](LICENSE). Las contribuciones son bienvenidas.
+[MIT](LICENSE). Las contribuciones son bienvenidas: empieza por [CONTRIBUTING.md](CONTRIBUTING.md).
 
 Riftlens no está respaldado por Riot Games. Los datos del juego se obtienen de la API oficial de Riot y de Data Dragon, y están sujetos a sus propias condiciones.
