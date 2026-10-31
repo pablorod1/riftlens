@@ -65,3 +65,9 @@ Los nombres de campeones, objetos y runas vienen traducidos de Data Dragon.
 2. Crawler y agregados: builds, runas, matchups y tier list (Esmeralda+, EUW) → pedir production key
 3. Diferenciadores: matchups personalizados (bayesiano global + tu historial), coach comparativo minuto a minuto, optimizador de pool
 4. Partida en directo, más regiones y elos; resumen de partida con IA
+
+## Licencia
+
+[MIT](LICENSE). Las contribuciones son bienvenidas.
+
+Riftlens no está respaldado por Riot Games. Los datos del juego se obtienen de la API oficial de Riot y de Data Dragon, y están sujetos a sus propias condiciones.
