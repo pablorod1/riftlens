@@ -4,12 +4,19 @@
  *   bun run crawl                         # EUW, hasta Ctrl+C
  *   bun run crawl -- --seed               # (re)carga jugadores Esmeralda+ antes de empezar
  *   bun run crawl -- --max 500            # para tras guardar 500 partidas
+ *   bun run crawl -- --no-timelines       # sin líneas temporales (el doble de rápido, sin orden de
+ *                                         # compra/habilidades ni curvas de referencia)
  *
  * Solo guarda partidas del parche actual (según Data Dragon) y respeta
  * RIOT_WORKER_SHARE para no dejar a la web sin cuota.
+ *
+ * DuckDB solo admite un proceso con el fichero abierto, así que el propio
+ * crawler publica los agregados cada --publish-every minutos y al parar.
  */
-import { APEX_TIERS, latestVersion, patchFromVersion, regionBySlug, RiotApiError, riotFromEnv } from "@riftlens/riot";
+import { getDb } from "@riftlens/db";
+import { APEX_TIERS, latestVersion, loadStaticData, parseTimeline, patchFromVersion, regionBySlug, RiotApiError, riotFromEnv } from "@riftlens/riot";
 import { parseArgs } from "node:util";
+import { aggregate } from "./lake/aggregate";
 import { bracketOfTier, Lake } from "./lake/lake";
 
 const { values } = parseArgs({
@@ -21,6 +28,9 @@ const { values } = parseArgs({
     max: { type: "string", default: "0" },
     /** Partidas recientes a pedir por jugador */
     "per-player": { type: "string", default: "20" },
+    "no-timelines": { type: "boolean", default: false },
+    /** Minutos entre publicaciones de agregados (0 = solo al terminar) */
+    "publish-every": { type: "string", default: "30" },
   },
 });
 
@@ -58,6 +68,13 @@ async function seed() {
   return total;
 }
 
+async function publish(patch: string) {
+  const t = Date.now();
+  const results = await aggregate(lake, getDb(), await loadStaticData("en_US"), { platform: region!.platform, patch });
+  const summary = results.map((r) => `${r.bracket} ${r.matches}`).join(" · ");
+  log(`Agregados publicados (${((Date.now() - t) / 1000).toFixed(1)} s): ${summary}`);
+}
+
 let stopping = false;
 process.on("SIGINT", () => {
   if (stopping) process.exit(1);
@@ -73,7 +90,10 @@ try {
   // Solo partidas recientes: el parche dura ~2 semanas
   const startTime = Math.floor((Date.now() - 15 * 86400_000) / 1000);
   const max = Number(values.max);
+  const publishEvery = Number(values["publish-every"]) * 60_000;
+  let lastPublish = Date.now();
   let saved = 0;
+  let savedSincePublish = 0;
 
   while (!stopping && (!max || saved < max)) {
     const batch = await lake.nextPlayers(region.platform, 10);
@@ -99,8 +119,10 @@ try {
           if (matchPatch !== patch) await lake.skip(id, `patch ${matchPatch}`);
           else if (m.info.participants.some((p) => p.gameEndedInEarlySurrender)) await lake.skip(id, "remake");
           else {
-            await lake.insertMatch(m, bracket);
+            const timeline = values["no-timelines"] ? undefined : parseTimeline(await riot.timeline(region.regional, id));
+            await lake.insertMatch(m, bracket, timeline);
             saved++;
+            savedSincePublish++;
             if (saved % 25 === 0) log(`${saved} partidas guardadas`);
           }
         } catch (err) {
@@ -109,8 +131,14 @@ try {
         }
       }
       await lake.markCrawled(player.puuid);
+      if (publishEvery && savedSincePublish && Date.now() - lastPublish >= publishEvery) {
+        await publish(patch);
+        lastPublish = Date.now();
+        savedSincePublish = 0;
+      }
     }
   }
+  if (savedSincePublish) await publish(patch);
   const s = await lake.stats(region.platform);
   log(`Fin. Esta sesión: ${saved}. En total: ${s.matches} partidas, ${s.players} jugadores.`);
 } catch (err) {

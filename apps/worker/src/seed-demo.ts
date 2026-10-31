@@ -6,7 +6,7 @@
  */
 import { ladderPuuidsWithoutName, refreshApexLadder, refreshProfile, resolveAccounts } from "@riftlens/core";
 import { getDb, schema } from "@riftlens/db";
-import { latestVersion, loadStaticData, patchFromVersion } from "@riftlens/riot";
+import { latestVersion, loadStaticData, patchFromVersion, type ParticipantTimeline } from "@riftlens/riot";
 import { resolve } from "node:path";
 import { aggregate } from "./lake/aggregate";
 import { Lake } from "./lake/lake";
@@ -185,6 +185,22 @@ if (realStats && realStats.n > 0) {
           };
         }),
       );
+      // Línea temporal sintética: curvas de CS/oro, compras en orden y habilidades
+      const timeline = new Map<string, ParticipantTimeline>();
+      for (const p of participants) {
+        const isSupport = p.teamPosition === "UTILITY";
+        const pace = (isSupport ? 1.2 : p.teamPosition === "JUNGLE" ? 5.8 : 7.2) + strength(p.championId) * 6 + (rnd(n + p.participantId) - 0.5);
+        const csAt = Array.from({ length: 25 }, (_, i) => Math.max(0, Math.round(pace * (i + 1) - (i < 2 ? 6 : 0))));
+        const goldAt = Array.from({ length: 25 }, (_, i) => Math.round(500 + (i + 1) * (isSupport ? 240 : 340) + csAt[i]! * 20));
+        const items = [p.item0, p.item1, p.item2, p.item3].filter(Boolean);
+        timeline.set(p.puuid, {
+          csAt,
+          goldAt,
+          xpAt: csAt.map((c) => c * 40),
+          purchases: [1056, 2003, p.item4, ...items],
+          skillOrder: rnd(p.championId) > 0.5 ? "QWEQQRQWQWRWWEEREE" : "QEWQQRQEQEREEWWRWW",
+        });
+      }
       const m = match(n);
       await lake.insertMatch(
         {
@@ -199,6 +215,7 @@ if (realStats && realStats.n > 0) {
           },
         },
         (["emerald", "diamond", "master_plus"] as const)[n % 3]!,
+        timeline,
       );
     }
   }

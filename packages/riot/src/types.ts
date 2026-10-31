@@ -143,3 +143,28 @@ export interface MatchIdsQuery {
   startTime?: number;
   endTime?: number;
 }
+
+export interface TimelineParticipantFrame {
+  participantId: number;
+  currentGold: number;
+  totalGold: number;
+  xp: number;
+  level: number;
+  minionsKilled: number;
+  jungleMinionsKilled: number;
+}
+
+export type TimelineEvent =
+  | { type: "ITEM_PURCHASED"; timestamp: number; participantId: number; itemId: number }
+  | { type: "ITEM_UNDO"; timestamp: number; participantId: number; beforeId: number; afterId: number }
+  | { type: "SKILL_LEVEL_UP"; timestamp: number; participantId: number; skillSlot: number; levelUpType: string }
+  | { type: string; timestamp: number; participantId?: number };
+
+export interface TimelineDto {
+  metadata: { matchId: string; participants: string[] };
+  info: {
+    frameInterval: number;
+    participants?: { participantId: number; puuid: string }[];
+    frames: { timestamp: number; participantFrames: Record<string, TimelineParticipantFrame>; events: TimelineEvent[] }[];
+  };
+}

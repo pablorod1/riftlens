@@ -106,6 +106,19 @@ function RunePage({ r, data, large = false }: { r: ChampionBuild["runes"][number
   );
 }
 
+/** Tecla de habilidad (Q, W, E, R). */
+function SkillKey({ k, strong = false }: { k: string; strong?: boolean }) {
+  return (
+    <span
+      className={`inline-flex size-8 items-center justify-center rounded-lg text-sm font-semibold ${
+        strong ? "bg-fg text-bg" : "border border-line-strong text-fg"
+      }`}
+    >
+      {k}
+    </span>
+  );
+}
+
 function MatchupList({ list, data, dict, locale, query }: { list: Matchup[]; data: StaticData; dict: Dictionary; locale: Locale; query: string }) {
   return (
     <ul className="space-y-1">
@@ -292,6 +305,72 @@ async function Champion({ params, searchParams }: Pick<Props, "params" | "search
               </Card>
             </div>
           </div>
+
+          {(build.order?.length || build.skills?.length) && (
+            <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+              {build.order?.length ? (
+                <Card title={C.buildOrder} note={C.buildOrderNote}>
+                  <ul className="space-y-2">
+                    {build.order.map((o, i) => (
+                      <li key={o.items.join()} className={`flex items-center justify-between gap-4 rounded-xl p-3 ${i === 0 ? "bg-panel-2" : ""}`}>
+                        <div className="flex items-center gap-2">
+                          {o.items.map((id, j) => (
+                            <span key={id} className="flex items-center gap-2">
+                              {j > 0 && (
+                                <svg viewBox="0 0 16 16" aria-hidden className="size-3.5 text-faint">
+                                  <path d="M6 4l4 4-4 4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                              )}
+                              <ItemIcon data={data} itemId={id} size={i === 0 ? 44 : 32} className="rounded-lg" />
+                            </span>
+                          ))}
+                        </div>
+                        <EntryStats e={o} total={role.games} dict={dict} />
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              ) : (
+                <div />
+              )}
+              {build.skills?.length ? (
+                <Card title={C.skillOrder}>
+                  <p className="eyebrow mb-3">{C.maxFirst}</p>
+                  <ul className="space-y-2">
+                    {build.skills.map((s, i) => (
+                      <li key={s.order} className="flex items-center justify-between">
+                        <span className="flex items-center gap-1.5">
+                          {s.order.split(">").map((k, j) => (
+                            <span key={k} className="flex items-center gap-1.5">
+                              {j > 0 && <span className="text-faint">›</span>}
+                              <SkillKey k={k} strong={i === 0 && j === 0} />
+                            </span>
+                          ))}
+                        </span>
+                        <EntryStats e={s} total={role.games} dict={dict} />
+                      </li>
+                    ))}
+                  </ul>
+                  {build.skillStart?.[0] && (
+                    <>
+                      <p className="eyebrow mt-5 mb-3">{C.skillStart}</p>
+                      <div className="flex items-center justify-between">
+                        <span className="flex gap-1.5">
+                          {[...build.skillStart[0].start].map((k, j) => (
+                            <span key={j} className="flex flex-col items-center gap-1">
+                              <SkillKey k={k} />
+                              <span className="tabular text-[10px] text-faint">{j + 1}</span>
+                            </span>
+                          ))}
+                        </span>
+                        <EntryStats e={build.skillStart[0]} total={role.games} dict={dict} />
+                      </div>
+                    </>
+                  )}
+                </Card>
+              ) : null}
+            </div>
+          )}
 
           <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
             <Card title={C.core} note={C.coreNote}>

@@ -7,6 +7,8 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { ApiKeyNotice, RateLimitNotice } from "@/components/api-key-notice";
 import { ChampionStats } from "@/components/champion-stats";
+import { CoachPanel } from "@/components/coach-panel";
+import Link from "next/link";
 import { InsightsRow } from "@/components/insights";
 import { MatchCard } from "@/components/match-card";
 import { MatchList } from "@/components/match-list";
@@ -19,6 +21,7 @@ import { t } from "@/i18n/config";
 import { getDictionary, getLocale, type Dictionary } from "@/i18n/server";
 import { parseRiotIdSlug, summonerPath, timeAgo } from "@/lib/format";
 import { computeInsights, queueGroup } from "@/lib/insights";
+import { param } from "@/lib/champions";
 import { db, riot, serverNow } from "@/lib/server";
 import { getStaticData } from "@/lib/static-data";
 
@@ -31,22 +34,23 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return { title: id ? `${id.gameName}#${id.tagLine} (${region.toUpperCase()})` : dict.meta.summoner };
 }
 
-export default async function SummonerPage({ params }: Props) {
+export default async function SummonerPage({ params, searchParams }: Props) {
   const dict = await getDictionary();
   return (
     <>
       <SiteHeader />
       <main className="mx-auto w-full max-w-6xl flex-1 px-5 pt-10 pb-20">
         <Suspense fallback={<ProfileSkeleton dict={dict} />}>
-          <ProfileContent params={params} />
+          <ProfileContent params={params} searchParams={searchParams} />
         </Suspense>
       </main>
     </>
   );
 }
 
-async function ProfileContent({ params }: Pick<Props, "params">) {
-  const { region: regionSlug, riotId } = await params;
+async function ProfileContent({ params, searchParams }: Pick<Props, "params" | "searchParams">) {
+  const [{ region: regionSlug, riotId }, sp] = await Promise.all([params, searchParams]);
+  const tab = param(sp.tab) === "coach" ? "coach" : "overview";
   const region = regionBySlug(regionSlug);
   const id = parseRiotIdSlug(riotId);
   if (!region || !id) notFound();
@@ -79,6 +83,7 @@ async function ProfileContent({ params }: Pick<Props, "params">) {
   const flex = profile.entries.find((e) => e.queueType === "RANKED_FLEX_SR");
   const iconUrl = ddragonImg.profileIcon(data.version, profile.summoner.profileIconId);
   const insights = computeInsights(profile.matches, profile.champions);
+  const basePath = summonerPath(locale, region.slug, profile.account.gameName, profile.account.tagLine);
 
   return (
     <div className="animate-fade-up">
@@ -126,6 +131,38 @@ async function ProfileContent({ params }: Pick<Props, "params">) {
         <InsightsRow insights={insights} data={data} dict={dict} />
       </div>
 
+      <nav className="mt-8 flex gap-6 border-b border-line" aria-label={p.overview}>
+        {[
+          { key: "overview", label: p.overview, href: basePath },
+          { key: "coach", label: dict.coach.tab, href: `${basePath}?tab=coach` },
+        ].map((tb) => (
+          <Link
+            key={tb.key}
+            href={tb.href}
+            scroll={false}
+            aria-current={tab === tb.key ? "page" : undefined}
+            className={`-mb-px border-b-2 pb-3 text-sm font-medium transition-colors ${
+              tab === tb.key ? "border-fg text-fg" : "border-transparent text-faint hover:text-muted"
+            }`}
+          >
+            {tb.label}
+          </Link>
+        ))}
+      </nav>
+
+      {tab === "coach" ? (
+        <div className="mt-6">
+          <CoachPanel
+            puuid={puuid}
+            region={region}
+            locale={locale}
+            dict={dict}
+            data={data}
+            selected={param(sp.champ)}
+            basePath={basePath}
+          />
+        </div>
+      ) : (
       <div className="mt-6 grid gap-6 lg:grid-cols-[300px_minmax(0,1fr)]">
         <aside className="space-y-6">
           <RankPanel solo={solo} flex={flex} dict={dict} />
@@ -154,6 +191,7 @@ async function ProfileContent({ params }: Pick<Props, "params">) {
           )}
         </div>
       </div>
+      )}
     </div>
   );
 }

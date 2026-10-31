@@ -41,10 +41,9 @@ Builds, matchups y tier list (crawler + agregador):
 
 ```bash
 bun run worker:crawl -- --seed      # siembra Esmeralda+ y rastrea partidas del parche actual (Ctrl+C para parar)
-bun run worker:aggregate            # calcula y publica en la base de datos lo que lee la web
 ```
 
-Las partidas en bruto se guardan en `data/matches.duckdb` (DuckDB, solo lo usa el worker).
+El crawler descarga cada partida con su línea temporal (orden de compra, habilidades y curvas para el coach; `--no-timelines` va el doble de rápido sin ellas) y **publica los agregados cada 30 minutos y al parar** (`--publish-every`). Las partidas en bruto se guardan en `data/matches.duckdb`: DuckDB solo admite un proceso a la vez, así que `bun run worker:aggregate` es para cuando el crawler está parado.
 
 Con la clave de desarrollo (100 peticiones / 2 min) resolver todos los Riot ID de Maestro+ tarda un rato: el ranking aparece al momento y los nombres se van rellenando.
 
@@ -72,7 +71,7 @@ Los nombres de campeones, objetos y runas vienen traducidos de Data Dragon.
 
 1. ✅ Buscador por Riot ID, perfil (rango, historial, campeones) y rankings Maestro+, en inglés y español
 2. ✅ Crawler (DuckDB) y agregados: builds, runas, matchups y tier list por elo (Esmeralda+, Diamante+, Maestro+) · pendiente: pedir production key, orden de compra y de habilidades (timelines)
-3. Diferenciadores: matchups personalizados (bayesiano global + tu historial), coach comparativo minuto a minuto, optimizador de pool
+3. ✅ Pestaña Coach: comparación con las medianas de alto elo y consejos, matchups personalizados (bayesiano global + tu historial), optimizador de pool y análisis minuto a minuto de cada partida; orden de compra y de habilidades en las builds
 4. Partida en directo, más regiones y elos; resumen de partida con IA
 
 ## Licencia

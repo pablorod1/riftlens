@@ -183,6 +183,29 @@ export interface ChampionBuild {
   items: (BuildEntry & { item: number })[];
   /** Tríos de objetos completos más jugados juntos (sin orden de compra) */
   core: (BuildEntry & { items: number[] })[];
+  /** Fase 3 (necesita líneas temporales): 3 primeros objetos completos en orden de compra */
+  order?: (BuildEntry & { items: number[] })[];
+  /** Orden de maximización de habilidades: "Q>E>W" */
+  skills?: (BuildEntry & { order: string })[];
+  /** Habilidades de los niveles 1–3: "QEW" */
+  skillStart?: (BuildEntry & { start: string })[];
+  /** Referencia para el coach: medianas de este campeón y rol en este elo */
+  benchmark?: Benchmark;
+}
+
+export interface Benchmark {
+  games: number;
+  csPerMin: number;
+  goldPerMin: number;
+  damagePerMin: number;
+  visionPerMin: number | null;
+  deaths: number;
+  killParticipation: number;
+  /** Mediana del CS y del oro total al final de cada minuto (índice 0 = minuto 1) */
+  csCurve: number[];
+  goldCurve: number[];
+  /** Partidas con línea temporal en las que se basan las curvas */
+  curveGames: number;
 }
 
 export const championBuilds = sqliteTable(

@@ -6,6 +6,7 @@ import { t, type Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/server";
 import { duration, fmtKda, formatInt, pct, summonerPath, thousands, timeAgo } from "@/lib/format";
 import { ChampionIcon, ItemIcon, RuneIcon, SpellIcon } from "./icons";
+import { MatchAnalysisView } from "./match-analysis";
 
 type Outcome = { label: string; color: string; tint: string };
 
@@ -111,6 +112,11 @@ export function MatchCard({
       </summary>
 
       <div className="grid gap-6 border-t border-line px-5 py-5 lg:grid-cols-2">
+        {!match.remake && me.position && region && (
+          <div className="lg:col-span-2">
+            <MatchAnalysisView matchId={match.matchId} puuid={me.puuid} region={region.slug} lang={locale} labels={dict.analysis} />
+          </div>
+        )}
         {teams.map((team, i) => {
           const won = team[0]?.win;
           const kills = team.reduce((s, x) => s + x.kills, 0);

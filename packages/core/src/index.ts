@@ -3,3 +3,4 @@ export * from "./ladder";
 export * from "./profile";
 export * from "./stats";
 export * from "./champions";
+export * from "./coach";
