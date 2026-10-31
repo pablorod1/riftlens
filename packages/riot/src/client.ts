@@ -6,6 +6,7 @@ import type {
   MatchDto,
   MatchIdsQuery,
   SummonerDto,
+  TimelineDto,
 } from "./types";
 
 export class RiotApiError extends Error {
@@ -182,6 +183,11 @@ export class RiotClient {
 
   match(route: string, matchId: string) {
     return this.request<MatchDto>(route, `/lol/match/v5/matches/${matchId}`);
+  }
+
+  /** Línea temporal: oro, CS y XP por minuto, compras y subidas de habilidad. */
+  timeline(route: string, matchId: string) {
+    return this.request<TimelineDto>(route, `/lol/match/v5/matches/${matchId}/timeline`);
   }
 }
 

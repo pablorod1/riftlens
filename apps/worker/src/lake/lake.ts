@@ -3,7 +3,7 @@
  * worker; la web nunca lo lee. De aquí salen los agregados que se suben a Turso.
  */
 import { DuckDBInstance, listValue, type DuckDBConnection } from "@duckdb/node-api";
-import { patchFromVersion, type MatchDto } from "@riftlens/riot";
+import { patchFromVersion, type MatchDto, type ParticipantTimeline } from "@riftlens/riot";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
@@ -59,6 +59,13 @@ create table if not exists participants (
 create table if not exists bans (match_id varchar not null, team_id integer not null, champion_id integer not null);
 -- Ids ya vistos que no guardamos (otro parche, remake…), para no volver a pedirlos
 create table if not exists skipped (match_id varchar primary key, reason varchar);
+-- Fase 3: datos de la línea temporal (vacíos en partidas rastreadas sin timeline)
+alter table participants add column if not exists cs_at integer[];
+alter table participants add column if not exists gold_at integer[];
+alter table participants add column if not exists xp_at integer[];
+alter table participants add column if not exists purchases integer[];
+alter table participants add column if not exists skill_order varchar;
+alter table participants add column if not exists vision integer;
 `;
 
 export class Lake {
@@ -134,7 +141,7 @@ export class Lake {
     await this.conn.run("insert into skipped values ($1, $2) on conflict do nothing", [matchId, reason]);
   }
 
-  async insertMatch(m: MatchDto, bracket: Bracket) {
+  async insertMatch(m: MatchDto, bracket: Bracket, timeline?: Map<string, ParticipantTimeline>) {
     const { info, metadata } = m;
     await this.conn.run("begin");
     try {
@@ -148,16 +155,20 @@ export class Lake {
         const sub = p.perks.styles.find((s) => s.description === "subStyle");
         const perks = [...(primary?.selections ?? []), ...(sub?.selections ?? [])].map((s) => s.perk);
         const shards = p.perks.statPerks ? [p.perks.statPerks.offense, p.perks.statPerks.flex, p.perks.statPerks.defense] : [];
+        const tl = timeline?.get(p.puuid);
+        const json = (v: number[] | undefined) => (v ? JSON.stringify(v) : null);
         await this.conn.run(
           // Las listas van como texto JSON y se convierten en SQL: así una lista vacía
           // (jugador sin objetos, partida sin fragmentos) no se queda sin tipo.
           `insert into participants values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-             $13::integer[], $14, $15, $16, $17, $18::integer[], $19::integer[])`,
+             $13::integer[], $14, $15, $16, $17, $18::integer[], $19::integer[],
+             $20::integer[], $21::integer[], $22::integer[], $23::integer[], $24, $25)`,
           [
             metadata.matchId, p.puuid, p.teamId, p.championId, p.teamPosition || "", p.win,
             p.kills, p.deaths, p.assists, p.totalMinionsKilled + p.neutralMinionsKilled, p.goldEarned, p.totalDamageDealtToChampions,
             JSON.stringify([p.item0, p.item1, p.item2, p.item3, p.item4, p.item5].filter(Boolean)),
             p.summoner1Id, p.summoner2Id, primary?.style ?? 0, sub?.style ?? 0, JSON.stringify(perks), JSON.stringify(shards),
+            json(tl?.csAt), json(tl?.goldAt), json(tl?.xpAt), json(tl?.purchases), tl?.skillOrder ?? null, p.visionScore,
           ],
         );
       }

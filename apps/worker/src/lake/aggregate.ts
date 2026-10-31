@@ -4,8 +4,8 @@
  * datos a medio escribir.
  */
 import { listValue } from "@duckdb/node-api";
-import { schema, type ChampionBuild, type Db } from "@riftlens/db";
-import { classifyItems, type StaticData } from "@riftlens/riot";
+import { schema, type Benchmark, type ChampionBuild, type Db } from "@riftlens/db";
+import { classifyItems, maxOrder, type StaticData } from "@riftlens/riot";
 import { and, eq } from "drizzle-orm";
 import { PUBLISHED_BRACKETS, type Lake, type PublishedBracket } from "./lake";
 
@@ -148,6 +148,87 @@ export async function aggregate(lake: Lake, db: Db, data: StaticData, opts: { pl
       pushTop(coreTop, `${champ}|${pos}`, { items: items!.split(",").map(Number), ...e }, 3);
     }
     for (const [k, list] of coreTop) build(k).core = list;
+
+    // --- Fase 3: orden de compra y de habilidades (solo partidas con línea temporal)
+    const orders = new Map<string, { games: number; wins: number }>();
+    const skills = new Map<string, { games: number; wins: number }>();
+    const starts = new Map<string, { games: number; wins: number }>();
+    const bump = (m: Map<string, { games: number; wins: number }>, k: string, win: boolean) => {
+      const e = m.get(k) ?? { games: 0, wins: 0 };
+      e.games++;
+      if (win) e.wins++;
+      m.set(k, e);
+    };
+    for (const r of await lake.all<{ champion_id: number; position: string; win: boolean; purchases: number[] | null; skill_order: string | null }>(
+      `select p.champion_id, p.position, p.win, p.purchases, p.skill_order from ${from} and p.purchases is not null`,
+      base,
+    )) {
+      const k = key(r.champion_id, r.position);
+      if (!valid.has(k)) continue;
+      const firstThree: number[] = [];
+      for (const it of r.purchases ?? []) {
+        if (legendary.has(it) && !firstThree.includes(it)) firstThree.push(it);
+        if (firstThree.length === 3) break;
+      }
+      if (firstThree.length === 3) bump(orders, `${k}|${firstThree.join(",")}`, r.win);
+      const mo = r.skill_order ? maxOrder(r.skill_order) : null;
+      if (mo) bump(skills, `${k}|${mo}`, r.win);
+      if (r.skill_order && r.skill_order.length >= 3) bump(starts, `${k}|${r.skill_order.slice(0, 3)}`, r.win);
+    }
+    const topOf = <T extends { games: number }>(m: Map<string, { games: number; wins: number }>, limit: number, make: (rest: string) => Omit<T, "games" | "wins">) => {
+      const out = new Map<string, T[]>();
+      for (const [t, e] of m) {
+        const [champ, pos, rest] = t.split("|");
+        pushTop(out, `${champ}|${pos}`, { ...make(rest!), ...e } as unknown as T, limit);
+      }
+      return out;
+    };
+    for (const [k, list] of topOf<NonNullable<ChampionBuild["order"]>[number]>(orders, 3, (rest) => ({ items: rest.split(",").map(Number) }))) build(k).order = list;
+    for (const [k, list] of topOf<NonNullable<ChampionBuild["skills"]>[number]>(skills, 3, (rest) => ({ order: rest }))) build(k).skills = list;
+    for (const [k, list] of topOf<NonNullable<ChampionBuild["skillStart"]>[number]>(starts, 2, (rest) => ({ start: rest }))) build(k).skillStart = list;
+
+    // --- Fase 3: referencias para el coach (medianas por campeón y rol)
+    for (const r of await lake.all<{ champion_id: number; position: string; games: bigint; cs: number; gold: number; dmg: number; vision: number | null; deaths: number; kp: number }>(
+      `select champion_id, position, count(*) as games,
+              quantile_cont(cs / mins, 0.5) as cs, quantile_cont(gold / mins, 0.5) as gold,
+              quantile_cont(damage / mins, 0.5) as dmg, quantile_cont(vision / mins, 0.5) as vision,
+              quantile_cont(deaths, 0.5) as deaths, quantile_cont(kp, 0.5) as kp
+       from (
+         select p.*, m.duration / 60.0 as mins,
+                (p.kills + p.assists) / greatest(1, sum(p.kills) over (partition by p.match_id, p.team_id)) as kp
+         from participants p join matches m on m.match_id = p.match_id
+         where ${scope} and p.position <> ''
+       ) group by all`,
+      base,
+    )) {
+      const k = key(r.champion_id, r.position);
+      if (!valid.has(k)) continue;
+      build(k).benchmark = {
+        games: n(r.games),
+        csPerMin: r.cs,
+        goldPerMin: r.gold,
+        damagePerMin: r.dmg,
+        visionPerMin: r.vision,
+        deaths: r.deaths,
+        killParticipation: r.kp,
+        csCurve: [],
+        goldCurve: [],
+        curveGames: 0,
+      } satisfies Benchmark;
+    }
+    for (const r of await lake.all<{ champion_id: number; position: string; i: bigint; cs: number; gold: number; games: bigint }>(
+      `select p.champion_id, p.position, r.i, quantile_cont(p.cs_at[r.i], 0.5) as cs, quantile_cont(p.gold_at[r.i], 0.5) as gold, count(*) as games
+       from participants p join matches m on m.match_id = p.match_id, range(1, 26) r(i)
+       where ${scope} and p.position <> '' and p.cs_at is not null and len(p.cs_at) >= r.i
+       group by all order by p.champion_id, p.position, r.i`,
+      base,
+    )) {
+      const b = builds.get(key(r.champion_id, r.position))?.benchmark;
+      if (!b) continue;
+      b.csCurve.push(Math.round(r.cs));
+      b.goldCurve.push(Math.round(r.gold));
+      if (Number(r.i) === 1) b.curveGames = n(r.games);
+    }
 
     const matchupRows = await lake.all<{ champion_id: number; position: string; opponent_id: number; games: bigint; wins: bigint }>(
       `select a.champion_id, a.position, b.champion_id as opponent_id, count(*) as games, sum(a.win::int) as wins

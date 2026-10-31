@@ -14,7 +14,16 @@ const { values } = parseArgs({ options: { region: { type: "string", default: "eu
 const region = regionBySlug(values.region!);
 if (!region) throw new Error(`Región desconocida: ${values.region}`);
 
-const lake = await Lake.open();
+let lake: Lake;
+try {
+  lake = await Lake.open();
+} catch (err) {
+  if (String(err).includes("lock")) {
+    console.error("El crawler tiene el lake abierto. No hace falta agregar a mano: el crawler publica cada 30 min y al parar (Ctrl+C).");
+    process.exit(1);
+  }
+  throw err;
+}
 try {
   const patch = values.patch ?? (await lake.stats(region.platform)).patch;
   if (!patch) {
