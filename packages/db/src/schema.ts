@@ -1,4 +1,4 @@
-import { index, integer, primaryKey, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, primaryKey, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 /**
  * Datos que sirve la web. Las partidas en bruto para builds y tier lists
@@ -133,3 +133,86 @@ export type LeagueEntry = typeof leagueEntries.$inferSelect;
 export type Match = typeof matches.$inferSelect;
 export type MatchParticipant = typeof matchParticipants.$inferSelect;
 export type LadderEntry = typeof ladderEntries.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// Fase 2: agregados de builds, matchups y tier list. Los calcula el worker
+// desde DuckDB y los sustituye en bloque por (parche, plataforma, elo).
+
+/** Una fila por cálculo publicado: cuántas partidas lo respaldan y cuándo se hizo. */
+export const statsMeta = sqliteTable(
+  "stats_meta",
+  {
+    patch: text("patch").notNull(),
+    platform: text("platform").notNull(),
+    bracket: text("bracket").notNull(),
+    matches: integer("matches").notNull(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.patch, t.platform, t.bracket] })],
+);
+
+export const championStats = sqliteTable(
+  "champion_stats",
+  {
+    patch: text("patch").notNull(),
+    platform: text("platform").notNull(),
+    bracket: text("bracket").notNull(),
+    championId: integer("champion_id").notNull(),
+    position: text("position").notNull(),
+    games: integer("games").notNull(),
+    wins: integer("wins").notNull(),
+    /** Partidas en las que fue baneado (de todas las del parche y elo) */
+    bans: integer("bans").notNull(),
+    /** Fracción de las partidas del campeón jugadas en este rol */
+    roleShare: real("role_share").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.patch, t.platform, t.bracket, t.championId, t.position] }),
+    index("champion_stats_position_idx").on(t.patch, t.platform, t.bracket, t.position),
+  ],
+);
+
+export interface BuildEntry {
+  games: number;
+  wins: number;
+}
+export interface ChampionBuild {
+  runes: (BuildEntry & { primaryStyle: number; subStyle: number; perks: number[]; shards: number[] })[];
+  spells: (BuildEntry & { spells: [number, number] })[];
+  boots: (BuildEntry & { item: number })[];
+  items: (BuildEntry & { item: number })[];
+  /** Tríos de objetos completos más jugados juntos (sin orden de compra) */
+  core: (BuildEntry & { items: number[] })[];
+}
+
+export const championBuilds = sqliteTable(
+  "champion_builds",
+  {
+    patch: text("patch").notNull(),
+    platform: text("platform").notNull(),
+    bracket: text("bracket").notNull(),
+    championId: integer("champion_id").notNull(),
+    position: text("position").notNull(),
+    data: text("data", { mode: "json" }).$type<ChampionBuild>().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.patch, t.platform, t.bracket, t.championId, t.position] })],
+);
+
+export const championMatchups = sqliteTable(
+  "champion_matchups",
+  {
+    patch: text("patch").notNull(),
+    platform: text("platform").notNull(),
+    bracket: text("bracket").notNull(),
+    championId: integer("champion_id").notNull(),
+    position: text("position").notNull(),
+    opponentId: integer("opponent_id").notNull(),
+    games: integer("games").notNull(),
+    wins: integer("wins").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.patch, t.platform, t.bracket, t.championId, t.position, t.opponentId] })],
+);
+
+export type StatsMeta = typeof statsMeta.$inferSelect;
+export type ChampionStat = typeof championStats.$inferSelect;
+export type ChampionMatchup = typeof championMatchups.$inferSelect;

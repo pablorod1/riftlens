@@ -7,9 +7,12 @@
   "scripts": {
     "ladder": "bun --env-file=../../.env src/ladder.ts",
     "typecheck": "tsc -p .",
-    "seed:demo": "bun --env-file=../../.env src/seed-demo.ts"
+    "seed:demo": "bun --env-file=../../.env src/seed-demo.ts",
+    "crawl": "bun --env-file=../../.env src/crawl.ts",
+    "aggregate": "bun --env-file=../../.env src/aggregate.ts"
   },
   "dependencies": {
+    "@duckdb/node-api": "^2.0.0-r.1",
     "@riftlens/core": "workspace:*",
     "@riftlens/db": "workspace:*",
     "@riftlens/riot": "workspace:*",

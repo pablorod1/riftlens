@@ -2,6 +2,8 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { localePath, locales } from "@/i18n/config";
 import { getDictionary, getLocale } from "@/i18n/server";
+import { ddragonImg } from "@riftlens/riot";
+import { getStaticData } from "@/lib/static-data";
 import { CommandPalette, SearchTrigger } from "./command-palette";
 import { LocaleSwitcher } from "./locale-switcher";
 
@@ -27,10 +29,13 @@ export async function Logo() {
 
 export async function SiteHeader({ search = true }: { search?: boolean }) {
   const [locale, dict] = await Promise.all([getLocale(), getDictionary()]);
+  const data = await getStaticData(locale);
+  const champions = Object.values(data.champions)
+    .map((c) => ({ slug: c.id.toLowerCase(), name: c.name, icon: ddragonImg.champion(data.version, c.id) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
   const nav = [
+    { href: localePath(locale, "/champions"), label: dict.nav.tierList },
     { href: localePath(locale, "/rankings/euw"), label: dict.nav.rankings },
-    { href: null, label: dict.nav.tierList },
-    { href: null, label: dict.nav.champions },
   ];
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-bg/75 backdrop-blur-xl">
@@ -56,7 +61,7 @@ export async function SiteHeader({ search = true }: { search?: boolean }) {
           </Suspense>
         </div>
       </div>
-      <CommandPalette locale={locale} labels={dict.search} regions={dict.regions} />
+      <CommandPalette locale={locale} labels={dict.search} regions={dict.regions} champions={champions} />
     </header>
   );
 }

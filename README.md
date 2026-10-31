@@ -26,7 +26,7 @@ bun run dev                 # http://localhost:3000 (redirige a /en o /es)
 ¿Sin clave de Riot? Carga datos ficticios para ver la web:
 
 ```bash
-bun run seed:demo           # /es/summoner/euw/Demo-EUW y /es/rankings/euw
+bun run seed:demo           # perfil, ranking y tier list ficticios (/es/champions)
 ```
 
 Ranking de Maestro+ (el worker lo rellena):
@@ -36,6 +36,15 @@ bun run worker:ladder                       # EUW, una vez
 bun run worker:ladder -- --region kr
 bun run worker:ladder -- --watch            # cada 30 min
 ```
+
+Builds, matchups y tier list (crawler + agregador):
+
+```bash
+bun run worker:crawl -- --seed      # siembra Esmeralda+ y rastrea partidas del parche actual (Ctrl+C para parar)
+bun run worker:aggregate            # calcula y publica en la base de datos lo que lee la web
+```
+
+Las partidas en bruto se guardan en `data/matches.duckdb` (DuckDB, solo lo usa el worker).
 
 Con la clave de desarrollo (100 peticiones / 2 min) resolver todos los Riot ID de Maestro+ tarda un rato: el ranking aparece al momento y los nombres se van rellenando.
 
@@ -62,7 +71,7 @@ Los nombres de campeones, objetos y runas vienen traducidos de Data Dragon.
 ## Hoja de ruta
 
 1. ✅ Buscador por Riot ID, perfil (rango, historial, campeones) y rankings Maestro+, en inglés y español
-2. Crawler y agregados: builds, runas, matchups y tier list (Esmeralda+, EUW) → pedir production key
+2. ✅ Crawler (DuckDB) y agregados: builds, runas, matchups y tier list por elo (Esmeralda+, Diamante+, Maestro+) · pendiente: pedir production key, orden de compra y de habilidades (timelines)
 3. Diferenciadores: matchups personalizados (bayesiano global + tu historial), coach comparativo minuto a minuto, optimizador de pool
 4. Partida en directo, más regiones y elos; resumen de partida con IA
 

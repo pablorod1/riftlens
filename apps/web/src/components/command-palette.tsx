@@ -15,7 +15,11 @@ interface Props {
   locale: Locale;
   labels: Dictionary["search"];
   regions: Dictionary["regions"];
+  champions: { slug: string; name: string; icon: string }[];
 }
+
+/** Normaliza para buscar campeones sin acentos ni signos ("kaisa" encuentra "Kai'Sa"). */
+const norm = (s: string) => s.normalize("NFD").replace(/[^a-z0-9]/gi, "").toLowerCase();
 
 /** Abre la paleta desde cualquier sitio (botón de la cabecera, portada…). */
 export function openSearch() {
@@ -26,7 +30,7 @@ export function openSearch() {
  * Búsqueda global: ⌘K / Ctrl+K o "/" desde cualquier página.
  * Muestra cómo se interpretará el Riot ID y las búsquedas recientes.
  */
-export function CommandPalette({ locale, labels, regions }: Props) {
+export function CommandPalette({ locale, labels, regions, champions }: Props) {
   const router = useRouter();
   const recent = useRecent();
   const [open, setOpen] = useState(false);
@@ -76,8 +80,15 @@ export function CommandPalette({ locale, labels, regions }: Props) {
   const effectiveRegion = regionFromTag(typedTag, REGIONS) ?? region;
   const regionInfo = REGIONS.find((r) => r.slug === effectiveRegion) ?? REGIONS[0];
   const parsed = parseRiotIdQuery(query, regionInfo.defaultTag);
-  // Con texto escrito, la primera opción es buscarlo; después, los recientes.
-  const items: ({ kind: "search" } | { kind: "recent"; entry: RecentSummoner })[] = [
+  // Sin "#" puede ser un campeón: los que coinciden van primero.
+  const q = norm(query);
+  const champMatches =
+    q.length >= 2 && !query.includes("#")
+      ? champions.filter((c) => norm(c.name).startsWith(q) || c.slug.startsWith(q)).slice(0, 4)
+      : [];
+  // Después, buscar el Riot ID escrito y, por último, los recientes.
+  const items: ({ kind: "search" } | { kind: "champion"; champ: Props["champions"][number] } | { kind: "recent"; entry: RecentSummoner })[] = [
+    ...champMatches.map((champ) => ({ kind: "champion" as const, champ })),
     ...(parsed ? [{ kind: "search" as const }] : []),
     ...recent
       .filter((r) => !query || `${r.gameName}#${r.tagLine}`.toLowerCase().includes(query.toLowerCase()))
@@ -88,9 +99,11 @@ export function CommandPalette({ locale, labels, regions }: Props) {
     const item = items[i];
     if (!item) return;
     const href =
-      item.kind === "search"
-        ? summonerPath(locale, effectiveRegion, parsed!.gameName, parsed!.tagLine)
-        : summonerPath(locale, item.entry.region, item.entry.gameName, item.entry.tagLine);
+      item.kind === "champion"
+        ? `/${locale}/champions/${item.champ.slug}`
+        : item.kind === "search"
+          ? summonerPath(locale, effectiveRegion, parsed!.gameName, parsed!.tagLine)
+          : summonerPath(locale, item.entry.region, item.entry.gameName, item.entry.tagLine);
     close();
     router.push(href);
   };
@@ -161,6 +174,19 @@ export function CommandPalette({ locale, labels, regions }: Props) {
             const base = `flex w-full cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 text-left text-sm ${
               selected ? "bg-panel-3" : ""
             }`;
+            if (item.kind === "champion") {
+              return (
+                <li key={`c-${item.champ.slug}`} id={`${listId}-${i}`} role="option" aria-selected={selected} className={base} onMouseEnter={() => setActive(i)} onClick={() => go(i)}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={item.champ.icon} alt="" className="size-8 rounded-lg" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate">{item.champ.name}</span>
+                    <span className="block text-xs text-faint">{labels.championHint}</span>
+                  </span>
+                  <span className="text-xs text-faint">↵</span>
+                </li>
+              );
+            }
             if (item.kind === "search") {
               return (
                 <li key="search" id={`${listId}-${i}`} role="option" aria-selected={selected} className={base} onMouseEnter={() => setActive(i)} onClick={() => go(i)}>

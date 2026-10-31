@@ -29,3 +29,23 @@ export function confidence(games: number): Confidence {
 export function kda(kills: number, deaths: number, assists: number) {
   return deaths === 0 ? Infinity : (kills + assists) / deaths;
 }
+
+/**
+ * Winrate "encogido" hacia el 50 %: con pocas partidas pesa más el 50 % que el
+ * dato observado. Evita que un campeón con 12 partidas al 75 % lidere la tier list.
+ */
+export function shrunkWinrate(wins: number, games: number, prior = 0.5, strength = 100) {
+  return (wins + prior * strength) / (games + strength);
+}
+
+export type Tier = "S+" | "S" | "A" | "B" | "C" | "D";
+
+/** Tier a partir del winrate encogido. Umbrales pensados para Solo/Dúo. */
+export function tierOf(shrunk: number): Tier {
+  if (shrunk >= 0.535) return "S+";
+  if (shrunk >= 0.522) return "S";
+  if (shrunk >= 0.508) return "A";
+  if (shrunk >= 0.493) return "B";
+  if (shrunk >= 0.478) return "C";
+  return "D";
+}

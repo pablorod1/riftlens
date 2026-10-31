@@ -16,7 +16,7 @@ bun run seed:demo    # carga datos ficticios
 bun run dev          # http://localhost:3000/es/summoner/euw/Demo-EUW
 ```
 
-Con `seed:demo` tienes un perfil y un ranking ficticios: suficiente para trabajar en casi toda la interfaz.
+Con `seed:demo` tienes un perfil, un ranking y una tier list ficticios (`/es/champions`): suficiente para trabajar en casi toda la interfaz.
 
 ### Con datos reales
 

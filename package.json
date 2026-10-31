@@ -16,7 +16,9 @@
     "db:generate": "bun run --cwd packages/db generate",
     "db:studio": "bun run --cwd packages/db studio",
     "worker:ladder": "bun run --cwd apps/worker ladder",
-    "seed:demo": "bun run --cwd apps/worker seed:demo"
+    "seed:demo": "bun run --cwd apps/worker seed:demo",
+    "worker:crawl": "bun run --cwd apps/worker crawl",
+    "worker:aggregate": "bun run --cwd apps/worker aggregate"
   },
   "devDependencies": {
     "@types/node": "22",

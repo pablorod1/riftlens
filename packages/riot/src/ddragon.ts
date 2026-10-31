@@ -14,10 +14,23 @@ export interface ChampionInfo {
   tags: string[];
 }
 
+export interface ItemInfo {
+  name: string;
+  description: string;
+  gold: number;
+  /** Profundidad en el árbol de compra (1 = básico, 3 = completo) */
+  depth: number;
+  into: number[];
+  from: number[];
+  tags: string[];
+  /** Comprable en la Grieta del Invocador */
+  sr: boolean;
+}
+
 export interface StaticData {
   version: string;
   champions: Record<number, ChampionInfo>;
-  items: Record<number, { name: string; description: string; gold: number }>;
+  items: Record<number, ItemInfo>;
   /** summonerXId -> id de imagen ("SummonerFlash") y nombre */
   spells: Record<number, { id: string; name: string }>;
   /** id de runa o estilo -> icono y nombre */
@@ -45,7 +58,22 @@ export async function loadStaticData(
   const base = `${CDN}/cdn/${v}/data/${locale}`;
 
   type ChampJson = { data: Record<string, { key: string; id: string; name: string; title: string; tags: string[] }> };
-  type ItemJson = { data: Record<string, { name: string; plaintext: string; gold: { total: number } }> };
+  type ItemJson = {
+    data: Record<
+      string,
+      {
+        name: string;
+        plaintext: string;
+        gold: { total: number; purchasable: boolean };
+        depth?: number;
+        into?: string[];
+        from?: string[];
+        tags?: string[];
+        maps?: Record<string, boolean>;
+        inStore?: boolean;
+      }
+    >;
+  };
   type SpellJson = { data: Record<string, { key: string; id: string; name: string }> };
   type RuneJson = { id: number; icon: string; name: string; slots: { runes: { id: number; icon: string; name: string }[] }[] }[];
 
@@ -61,7 +89,16 @@ export async function loadStaticData(
     data.champions[Number(c.key)] = { key: Number(c.key), id: c.id, name: c.name, title: c.title, tags: c.tags };
   }
   for (const [id, it] of Object.entries(items.data)) {
-    data.items[Number(id)] = { name: it.name, description: it.plaintext, gold: it.gold.total };
+    data.items[Number(id)] = {
+      name: it.name,
+      description: it.plaintext,
+      gold: it.gold.total,
+      depth: it.depth ?? 1,
+      into: (it.into ?? []).map(Number),
+      from: (it.from ?? []).map(Number),
+      tags: it.tags ?? [],
+      sr: !!it.maps?.["11"] && it.gold.purchasable && it.inStore !== false,
+    };
   }
   for (const s of Object.values(spells.data)) {
     data.spells[Number(s.key)] = { id: s.id, name: s.name };
@@ -81,3 +118,39 @@ export const ddragonImg = {
   /** Las runas no van versionadas: el icono ya trae la ruta completa. */
   rune: (iconPath: string) => `${CDN}/cdn/img/${iconPath}`,
 };
+
+export interface ItemClasses {
+  /** Objetos completos (los que definen una build) */
+  legendary: Set<number>;
+  /** Botas: id de cualquier nivel -> id de las botas de nivel 2 (las que se eligen) */
+  boots: Map<number, number>;
+}
+
+/**
+ * Clasifica los objetos de la Grieta. Un objeto completo no se mejora en nada,
+ * cuesta al menos 2000 de oro y no es consumible, abalorio ni botas.
+ * Las botas de nivel 3 se agrupan con su versión de nivel 2.
+ */
+export function classifyItems(data: StaticData): ItemClasses {
+  const legendary = new Set<number>();
+  const boots = new Map<number, number>();
+  for (const [key, it] of Object.entries(data.items)) {
+    const id = Number(key);
+    if (!it.sr) continue;
+    if (it.tags.includes("Boots")) {
+      if (it.depth === 2) boots.set(id, id);
+      continue;
+    }
+    if (it.into.length === 0 && it.gold >= 2000 && !it.tags.includes("Consumable") && !it.tags.includes("Trinket")) {
+      legendary.add(id);
+    }
+  }
+  // Nivel 3 -> nivel 2 (el nivel 3 sale de mejorar unas botas de nivel 2)
+  for (const [key, it] of Object.entries(data.items)) {
+    const id = Number(key);
+    if (!it.tags.includes("Boots") || boots.has(id)) continue;
+    const base = it.from.find((f) => boots.has(f));
+    if (base !== undefined) boots.set(id, base);
+  }
+  return { legendary, boots };
+}
