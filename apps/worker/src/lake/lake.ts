@@ -106,9 +106,10 @@ export class Lake {
       `select puuid, tier from (
          select puuid, tier, row_number() over (
            partition by case when tier = 'EMERALD' then 0 when tier = 'DIAMOND' then 1 else 2 end
-           order by crawled_at asc nulls first, random()
+           order by crawled_at asc nulls first, r
          ) as rn
-         from players where platform = $1
+         -- random() no puede ir dentro de la ventana: lo calculamos antes
+         from (select puuid, tier, crawled_at, random() as r from players where platform = $1)
        ) where rn <= ceil($2 / 3) order by rn`,
       [platform, limit],
     );
