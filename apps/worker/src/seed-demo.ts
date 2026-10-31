@@ -168,8 +168,9 @@ if (realStats && realStats.n > 0) {
           const pool = BUILDS[pos]!;
           const items = [...pool].sort((a, b) => rnd(a * (champ + 1)) - rnd(b * (champ + 1)) + (r(1) - 0.5) * 0.6).slice(0, 3 + Math.floor(r(2) * 2));
           const rune = pick(RUNES[pos]!, champ + n);
+          const base = participant(n, t * 5 + i);
           return {
-            ...participant(n, t * 5 + i),
+            ...base,
             puuid: `demo-lake-${n}-${team}-${i}`, participantId: t * 5 + i + 1, teamId: team, championId: champ,
             teamPosition: pos, win: (team === 100) === blueWins,
             item0: items[0] ?? 0, item1: items[1] ?? 0, item2: items[2] ?? 0, item3: items[3] ?? 0, item4: pick(BOOTS[pos]!, champ * 3 + Math.floor(r(3) * 1.4)), item5: 0,
@@ -182,6 +183,11 @@ if (realStats && realStats.n > 0) {
               statPerks: { offense: 5008, flex: 5008, defense: 5011 },
             },
             gameEndedInEarlySurrender: false,
+            physicalDamageDealtToChampions: Math.round(base.totalDamageDealtToChampions * (pos === "BOTTOM" || pos === "TOP" ? 0.8 : 0.25)),
+            magicDamageDealtToChampions: Math.round(base.totalDamageDealtToChampions * (pos === "BOTTOM" || pos === "TOP" ? 0.12 : 0.65)),
+            trueDamageDealtToChampions: Math.round(base.totalDamageDealtToChampions * 0.08),
+            totalHeal: Math.round(1500 + r(20) * 9000),
+            largestKillingSpree: Math.floor(r(21) * 5),
           };
         }),
       );
@@ -197,7 +203,9 @@ if (realStats && realStats.n > 0) {
           csAt,
           goldAt,
           xpAt: csAt.map((c) => c * 40),
-          purchases: [1056, 2003, p.item4, ...items],
+          purchases: [1056, 2003, 2003, 3340, p.item4, ...items],
+          // Iniciales en el segundo 0, botas hacia el minuto 8 y un objeto completo cada ~7 minutos
+          purchaseTimes: [0, 0, 0, 0, 480, ...items.map((_, j) => 600 + j * 420 + Math.round(rnd(n + j) * 120))],
           skillOrder: rnd(p.championId) > 0.5 ? "QWEQQRQWQWRWWEEREE" : "QEWQQRQEQEREEWWRWW",
         });
       }
@@ -211,7 +219,25 @@ if (realStats && realStats.n > 0) {
             gameVersion: `${patch}.1.1`,
             queueId: 420,
             participants: participants as never,
-            teams: [100, 200].map((teamId, t) => ({ teamId: teamId as 100 | 200, win: (teamId === 100) === blueWins, objectives: {}, bans: [{ championId: pick(Object.values(POOLS).flat(), n * 5 + t), pickTurn: 1 }] })),
+            teams: [100, 200].map((teamId, t) => {
+              const winner = (teamId === 100) === blueWins;
+              // Los primeros objetivos caen más del lado del ganador, como en una partida real
+              const first = (k: number) => (rnd(n * 13 + k) < 0.68) === winner;
+              return {
+                teamId: teamId as 100 | 200,
+                win: winner,
+                objectives: {
+                  champion: { first: first(1), kills: 20 },
+                  tower: { first: first(2), kills: winner ? 8 : 3 },
+                  inhibitor: { first: winner && rnd(n) > 0.3, kills: winner ? 1 : 0 },
+                  horde: { first: first(4), kills: 3 },
+                  riftHerald: { first: first(5), kills: 1 },
+                  dragon: { first: first(6), kills: winner ? 4 : 1 },
+                  baron: { first: winner && rnd(n + 1) > 0.4, kills: winner ? 1 : 0 },
+                },
+                bans: [{ championId: pick(Object.values(POOLS).flat(), n * 5 + t), pickTurn: 1 }],
+              };
+            }),
           },
         },
         (["emerald", "diamond", "master_plus"] as const)[n % 3]!,

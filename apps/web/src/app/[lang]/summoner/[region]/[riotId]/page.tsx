@@ -185,7 +185,7 @@ async function ProfileContent({ params, searchParams }: Pick<Props, "params" | "
               items={profile.matches.map((m) => ({
                 id: m.match.matchId,
                 group: queueGroup(m.match.queueId),
-                node: <MatchCard m={m} data={data} now={now} dict={dict} locale={locale} />,
+                node: <MatchCard m={m} data={data} now={now} dict={dict} locale={locale} ranks={profile.ranks} />,
               }))}
             />
           )}

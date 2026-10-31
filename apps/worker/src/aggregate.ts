@@ -7,7 +7,7 @@
 import { getDb } from "@riftlens/db";
 import { loadStaticData, regionBySlug } from "@riftlens/riot";
 import { parseArgs } from "node:util";
-import { aggregate } from "./lake/aggregate";
+import { aggregate, publishAccounts } from "./lake/aggregate";
 import { Lake } from "./lake/lake";
 
 const { values } = parseArgs({ options: { region: { type: "string", default: "euw" }, patch: { type: "string" } } });
@@ -32,6 +32,7 @@ try {
     const t = Date.now();
     const results = await aggregate(lake, getDb(), await loadStaticData("en_US"), { platform: region.platform, patch });
     for (const r of results) console.log(`${patch} ${r.bracket}: ${r.matches} partidas, ${r.champions} campeón-rol`);
+    console.log(`Riot IDs nuevos para las sugerencias: ${await publishAccounts(lake, getDb(), region.platform)}`);
     console.log(`Publicado en ${((Date.now() - t) / 1000).toFixed(1)} s`);
   }
 } finally {

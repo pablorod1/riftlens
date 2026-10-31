@@ -10,6 +10,8 @@ import { parseRiotIdQuery, regionFromTag, summonerPath } from "@/lib/format";
 import { clearRecent, OPEN_SEARCH_EVENT, removeRecent, type RecentSummoner } from "@/lib/recent";
 import { Kbd, SearchGlyph } from "./search-icons";
 import { useRecent } from "./use-recent";
+import { useSuggestions } from "./use-suggestions";
+import type { SuggestionDto } from "@/app/api/search/route";
 
 interface Props {
   locale: Locale;
@@ -36,6 +38,7 @@ export function CommandPalette({ locale, labels, regions, champions }: Props) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [region, setRegion] = useState("euw");
+  const suggestions = useSuggestions(open ? query : "", region, locale);
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listId = useId();
@@ -87,12 +90,21 @@ export function CommandPalette({ locale, labels, regions, champions }: Props) {
       ? champions.filter((c) => norm(c.name).startsWith(q) || c.slug.startsWith(q)).slice(0, 4)
       : [];
   // Después, buscar el Riot ID escrito y, por último, los recientes.
-  const items: ({ kind: "search" } | { kind: "champion"; champ: Props["champions"][number] } | { kind: "recent"; entry: RecentSummoner })[] = [
+  // Recientes que coinciden (sin repetir los que ya salen como sugerencia)
+  const sameId = (a: { gameName: string; tagLine: string; region: string }, b: { gameName: string; tagLine: string; region: string }) =>
+    a.region === b.region && `${a.gameName}#${a.tagLine}`.toLowerCase() === `${b.gameName}#${b.tagLine}`.toLowerCase();
+  const recentMatches = recent.filter((r) => !query || `${r.gameName}#${r.tagLine}`.toLowerCase().includes(query.toLowerCase()));
+  const items: (
+    | { kind: "search" }
+    | { kind: "champion"; champ: Props["champions"][number] }
+    | { kind: "recent"; entry: RecentSummoner }
+    | { kind: "suggestion"; s: SuggestionDto }
+  )[] = [
     ...champMatches.map((champ) => ({ kind: "champion" as const, champ })),
+    ...(query ? recentMatches : []).map((entry) => ({ kind: "recent" as const, entry })),
+    ...suggestions.filter((s) => !recentMatches.some((r) => sameId(r, s))).map((s) => ({ kind: "suggestion" as const, s })),
     ...(parsed ? [{ kind: "search" as const }] : []),
-    ...recent
-      .filter((r) => !query || `${r.gameName}#${r.tagLine}`.toLowerCase().includes(query.toLowerCase()))
-      .map((entry) => ({ kind: "recent" as const, entry })),
+    ...(query ? [] : recentMatches.map((entry) => ({ kind: "recent" as const, entry }))),
   ];
 
   const go = (i: number) => {
@@ -101,7 +113,9 @@ export function CommandPalette({ locale, labels, regions, champions }: Props) {
     const href =
       item.kind === "champion"
         ? `/${locale}/champions/${item.champ.slug}`
-        : item.kind === "search"
+        : item.kind === "suggestion"
+          ? summonerPath(locale, item.s.region, item.s.gameName, item.s.tagLine)
+          : item.kind === "search"
           ? summonerPath(locale, effectiveRegion, parsed!.gameName, parsed!.tagLine)
           : summonerPath(locale, item.entry.region, item.entry.gameName, item.entry.tagLine);
     close();
@@ -182,6 +196,31 @@ export function CommandPalette({ locale, labels, regions, champions }: Props) {
                   <span className="min-w-0 flex-1">
                     <span className="block truncate">{item.champ.name}</span>
                     <span className="block text-xs text-faint">{labels.championHint}</span>
+                  </span>
+                  <span className="text-xs text-faint">↵</span>
+                </li>
+              );
+            }
+            if (item.kind === "suggestion") {
+              const s = item.s;
+              return (
+                <li key={`s-${s.region}-${s.gameName}-${s.tagLine}`} id={`${listId}-${i}`} role="option" aria-selected={selected} className={base} onMouseEnter={() => setActive(i)} onClick={() => go(i)}>
+                  {s.iconUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={s.iconUrl} alt="" className="size-8 rounded-full" />
+                  ) : (
+                    <span className="flex size-8 items-center justify-center rounded-full bg-panel-3 text-xs font-medium text-muted">
+                      {s.gameName.slice(0, 1).toUpperCase()}
+                    </span>
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate">
+                      {s.gameName}
+                      <span className="text-faint">#{s.tagLine}</span>
+                    </span>
+                    <span className="block text-xs text-faint">
+                      {[s.region.toUpperCase(), s.rank, s.level ? `${s.level}` : null].filter(Boolean).join(" · ")}
+                    </span>
                   </span>
                   <span className="text-xs text-faint">↵</span>
                 </li>

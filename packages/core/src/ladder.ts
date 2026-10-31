@@ -1,7 +1,7 @@
 import { schema, type Db } from "@riftlens/db";
 import { APEX_TIERS, type LeagueItemDto, type Region, type RiotClient, type Tier } from "@riftlens/riot";
 import { and, asc, count, eq, isNull, lt, or, sql } from "drizzle-orm";
-import { riotIdKey } from "./profile";
+import { riotIdKey } from "./keys";
 
 const TIER_ORDER: Record<string, number> = { CHALLENGER: 0, GRANDMASTER: 1, MASTER: 2 };
 
@@ -77,10 +77,10 @@ export async function resolveAccounts(db: Db, riot: RiotClient, region: Region, 
     const { puuid, gameName, tagLine = "" } = r.value;
     await db
       .insert(schema.accounts)
-      .values({ puuid, gameName, tagLine, riotIdKey: riotIdKey(gameName, tagLine), updatedAt: now })
+      .values({ puuid, gameName, tagLine, riotIdKey: riotIdKey(gameName, tagLine), lastPlatform: region.platform, updatedAt: now })
       .onConflictDoUpdate({
         target: schema.accounts.puuid,
-        set: { gameName, tagLine, riotIdKey: riotIdKey(gameName, tagLine), updatedAt: now },
+        set: { gameName, tagLine, riotIdKey: riotIdKey(gameName, tagLine), lastPlatform: region.platform, updatedAt: now },
       });
     saved++;
   }

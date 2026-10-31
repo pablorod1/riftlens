@@ -1,4 +1,4 @@
-import { BRACKETS, isBracket, latestScope, loadChampion, SMALL_SAMPLE, wilson, type BracketId, type Matchup } from "@riftlens/core";
+import { BRACKETS, isBracket, latestScope, loadChampion, loadTierList, SMALL_SAMPLE, wilson, type BracketId, type Matchup } from "@riftlens/core";
 import type { BuildEntry, ChampionBuild } from "@riftlens/db";
 import { ddragonImg, regionBySlug, type Position, type StaticData } from "@riftlens/riot";
 import type { Metadata } from "next";
@@ -7,6 +7,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
+import { DetailedView, DetailHeaderStats } from "@/components/champion/detailed-view";
 import { FilterPills } from "@/components/filter-pills";
 import { ChampionIcon, ItemIcon, RuneIcon, SpellIcon } from "@/components/icons";
 import { SiteHeader } from "@/components/site-header";
@@ -174,6 +175,11 @@ async function Champion({ params, searchParams }: Pick<Props, "params" | "search
   const tierHref = localePath(locale, `/champions${role ? `?role=${slugFromRole(role.position)}` : ""}`);
 
   const build = role ? loaded?.buildBy.get(role.position) : undefined;
+  const detail = build?.detail;
+  // Puesto en su rol según el winrate corregido (el mismo orden que la tier list)
+  const peers = role && scope ? await loadTierList(db(), scope, role.position) : [];
+  const rank = role ? peers.findIndex((p) => p.championId === role.championId) + 1 : 0;
+  const bracketQuery = bracket !== "emerald_plus" ? `?elo=${bracket}` : "";
   const matchups = (role ? loaded?.matchupsBy.get(role.position) : undefined) ?? [];
   // Para "mejores/peores" exigimos una muestra mínima y ordenamos por winrate corregido
   const solid = matchups.filter((m) => m.games >= Math.max(5, Math.round((role?.games ?? 0) * 0.01)));
@@ -197,7 +203,7 @@ async function Champion({ params, searchParams }: Pick<Props, "params" | "search
           </div>
         </div>
         {role && ci && (
-          <dl className="flex items-center gap-6 sm:gap-8">
+          <dl className="flex flex-wrap items-center gap-x-6 gap-y-4 sm:gap-x-8">
             <div className="text-center">
               <dt className="eyebrow">{C.tier}</dt>
               <dd className="mt-1.5">
@@ -218,6 +224,7 @@ async function Champion({ params, searchParams }: Pick<Props, "params" | "search
               <dt className="eyebrow">{C.banRate}</dt>
               <dd className="tabular mt-1.5 text-2xl font-semibold">{pct(role.banRate, 1)}</dd>
             </div>
+            {detail && <DetailHeaderStats role={role} detail={detail} rank={rank} of={peers.length} dict={dict} />}
             <div className="hidden sm:block">
               <dt className="eyebrow">{C.games}</dt>
               <dd className="tabular mt-1.5 text-2xl font-semibold text-muted">{formatInt(role.games, locale)}</dd>
@@ -243,7 +250,29 @@ async function Champion({ params, searchParams }: Pick<Props, "params" | "search
         {scope && <span className="text-xs text-faint">{t(C.patch, { patch: scope.patch })}</span>}
       </div>
 
-      {!role || !build ? (
+      {role && build && detail && scope ? (
+        <>
+          {role.games < SMALL_SAMPLE * 5 && (
+            <p className="mt-6 inline-flex items-center gap-2 rounded-lg border border-gold/30 px-3 py-1.5 text-xs text-gold">
+              <span className="size-1.5 rounded-full bg-gold" />
+              {C.lowSample} · {t(C.gamesN, { n: role.games })}
+            </p>
+          )}
+          <DetailedView
+            role={role}
+            detail={detail}
+            scope={scope}
+            data={data}
+            dict={dict}
+            locale={locale}
+            championId={champ.key}
+            rank={rank}
+            of={peers.length}
+            region={region.slug}
+            bracketQuery={bracketQuery}
+          />
+        </>
+      ) : !role || !build ? (
         <p className="mt-8 rounded-2xl border border-dashed border-line-strong px-6 py-16 text-center text-sm text-muted">{C.noChampionData}</p>
       ) : (
         <>

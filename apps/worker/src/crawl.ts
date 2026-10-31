@@ -16,7 +16,7 @@
 import { getDb } from "@riftlens/db";
 import { APEX_TIERS, latestVersion, loadStaticData, parseTimeline, patchFromVersion, regionBySlug, RiotApiError, riotFromEnv } from "@riftlens/riot";
 import { parseArgs } from "node:util";
-import { aggregate } from "./lake/aggregate";
+import { aggregate, publishAccounts } from "./lake/aggregate";
 import { bracketOfTier, Lake } from "./lake/lake";
 
 const { values } = parseArgs({
@@ -71,8 +71,9 @@ async function seed() {
 async function publish(patch: string) {
   const t = Date.now();
   const results = await aggregate(lake, getDb(), await loadStaticData("en_US"), { platform: region!.platform, patch });
+  const accounts = await publishAccounts(lake, getDb(), region!.platform);
   const summary = results.map((r) => `${r.bracket} ${r.matches}`).join(" · ");
-  log(`Agregados publicados (${((Date.now() - t) / 1000).toFixed(1)} s): ${summary}`);
+  log(`Agregados publicados (${((Date.now() - t) / 1000).toFixed(1)} s): ${summary} · ${accounts} Riot IDs nuevos`);
 }
 
 let stopping = false;

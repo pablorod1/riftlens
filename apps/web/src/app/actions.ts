@@ -1,8 +1,8 @@
 "use server";
 
-import { fetchMoreMatches, loadBenchmarks, REFRESH_COOLDOWN_MS, refreshProfile } from "@riftlens/core";
+import { fetchMoreMatches, getMatchTimeline, loadBenchmarks, REFRESH_COOLDOWN_MS, refreshProfile } from "@riftlens/core";
 import { schema } from "@riftlens/db";
-import { isRateLimitError, parseTimeline, regionBySlug, REGIONS, RiotApiError } from "@riftlens/riot";
+import { isRateLimitError, regionBySlug, REGIONS, RiotApiError, type MatchTimelineData, type StaticData } from "@riftlens/riot";
 import { and, eq } from "drizzle-orm";
 import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
@@ -72,54 +72,54 @@ export async function loadMoreMatches(_prev: UpdateState, formData: FormData): P
   }
 }
 
-export interface MatchAnalysis {
+export interface MatchTimelinePayload {
   ok: boolean;
   message?: string;
-  championId?: number;
-  opponentChampionId?: number;
-  opponentName?: string;
-  bracket?: string;
-  you?: { cs: number[]; gold: number[] };
-  opponent?: { cs: number[]; gold: number[] };
-  reference?: { cs: number[]; gold: number[] };
+  timeline?: MatchTimelineData;
+  version?: string;
+  /** Nombres de los objetos comprados en la partida */
+  items?: Record<number, string>;
+  runeTrees?: StaticData["runeTrees"];
+  runes?: StaticData["runes"];
+  /** Curvas medianas de alto elo para el campeón y rol del jugador */
+  reference?: { cs: number[]; gold: number[]; bracket: string };
 }
 
 /**
- * Descarga la línea temporal de una partida (1 petición) y la compara con el
- * rival de línea y con la curva mediana de alto elo de ese campeón y rol.
+ * Línea temporal de una partida para las pestañas Timeline, Build y Gráficas.
+ * Se pide a Riot una sola vez (1 petición) y queda guardada.
  */
-export async function analyzeMatch(input: { matchId: string; puuid: string; region: string; lang: string }): Promise<MatchAnalysis> {
+export async function loadMatchTimeline(input: { matchId: string; puuid: string; region: string; lang: string }): Promise<MatchTimelinePayload> {
   const dict = await getDictionaryFor(input.lang);
   const region = regionBySlug(input.region);
   if (!region || !/^[A-Z0-9]+_\d+$/.test(input.matchId)) return { ok: false, message: dict.refreshResult.invalid };
   try {
-    const players = await db()
-      .select({ puuid: schema.matchParticipants.puuid, teamId: schema.matchParticipants.teamId, position: schema.matchParticipants.position, championId: schema.matchParticipants.championId })
-      .from(schema.matchParticipants)
-      .where(eq(schema.matchParticipants.matchId, input.matchId));
-    const me = players.find((p) => p.puuid === input.puuid);
-    if (!me) return { ok: false, message: dict.refreshResult.invalid };
-    const opp = players.find((p) => p.teamId !== me.teamId && p.position === me.position && me.position);
+    const timeline = await getMatchTimeline(db(), riot(), region, input.matchId);
+    const data = await getStaticData(isLocale(input.lang) ? input.lang : defaultLocale);
+    const bought = new Set(Object.values(timeline.items).flatMap((list) => list.map((i) => i.item)));
+    const items = Object.fromEntries([...bought].map((id) => [id, data.items[id]?.name ?? String(id)]));
 
-    const timeline = parseTimeline(await riot().timeline(region.regional, input.matchId));
-    const mine = timeline.get(me.puuid);
-    const theirs = opp ? timeline.get(opp.puuid) : undefined;
-    const bench = me.position ? (await loadBenchmarks(db(), region.platform, [me])).get(`${me.championId}|${me.position}`) : undefined;
+    const [me] = await db()
+      .select({ championId: schema.matchParticipants.championId, position: schema.matchParticipants.position })
+      .from(schema.matchParticipants)
+      .where(and(eq(schema.matchParticipants.matchId, input.matchId), eq(schema.matchParticipants.puuid, input.puuid)))
+      .limit(1);
+    const bench = me?.position ? (await loadBenchmarks(db(), region.platform, [me])).get(`${me.championId}|${me.position}`) : undefined;
     const curve = bench?.benchmark;
-    const names = await getStaticData(isLocale(input.lang) ? input.lang : defaultLocale);
+
     return {
-      opponentName: opp ? names.champions[opp.championId]?.name : undefined,
       ok: true,
-      championId: me.championId,
-      opponentChampionId: opp?.championId,
-      bracket: bench ? dict.champions.brackets[bench.bracket] : undefined,
-      you: mine ? { cs: mine.csAt, gold: mine.goldAt } : undefined,
-      opponent: theirs ? { cs: theirs.csAt, gold: theirs.goldAt } : undefined,
-      reference: curve && curve.csCurve.length ? { cs: curve.csCurve, gold: curve.goldCurve } : undefined,
+      timeline,
+      version: data.version,
+      items,
+      runeTrees: data.runeTrees,
+      runes: data.runes,
+      reference: curve && curve.csCurve.length && bench ? { cs: curve.csCurve, gold: curve.goldCurve, bracket: dict.champions.brackets[bench.bracket] } : undefined,
     };
   } catch (err) {
     if (isRateLimitError(err)) return { ok: false, message: dict.refreshResult.rateLimited };
     if (err instanceof RiotApiError && err.isAuth) return { ok: false, message: dict.refreshResult.auth };
+    if (err instanceof RiotApiError && err.isNotFound) return { ok: false, message: dict.matchDetails.noTimeline };
     console.error(err);
     return { ok: false, message: dict.analysis.failed };
   }

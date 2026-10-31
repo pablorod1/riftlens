@@ -1,12 +1,15 @@
 import type { ProfileMatch } from "@riftlens/core";
 import { kda } from "@riftlens/core";
 import { regionByPlatform, type StaticData } from "@riftlens/riot";
-import Link from "next/link";
 import { t, type Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/server";
-import { duration, fmtKda, formatInt, pct, summonerPath, thousands, timeAgo } from "@/lib/format";
+import { duration, fmtKda, pct, timeAgo } from "@/lib/format";
 import { ChampionIcon, ItemIcon, RuneIcon, SpellIcon } from "./icons";
-import { MatchAnalysisView } from "./match-analysis";
+import { MatchDetails } from "./match-details";
+import { MatchOverview } from "./match-overview";
+import { MatchTeams } from "./match-teams";
+import type { PlayerMeta } from "./match/types";
+import { ddragonImg } from "@riftlens/riot";
 
 type Outcome = { label: string; color: string; tint: string };
 
@@ -23,12 +26,14 @@ export function MatchCard({
   now,
   dict,
   locale,
+  ranks,
 }: {
   m: ProfileMatch;
   data: StaticData;
   now: number;
   dict: Dictionary;
   locale: Locale;
+  ranks: Record<string, { tier: string; division: string }>;
 }) {
   const { me, match, participants } = m;
   const p = dict.profile;
@@ -38,8 +43,6 @@ export function MatchCard({
   const teamKills = participants.filter((x) => x.teamId === me.teamId).reduce((sum, x) => sum + x.kills, 0);
   const kp = teamKills ? (me.kills + me.assists) / teamKills : 0;
   const region = regionByPlatform(match.platform);
-  const teams = [100, 200].map((team) => participants.filter((x) => x.teamId === team));
-  const maxDamage = Math.max(1, ...participants.map((x) => x.damage));
   const ratio = kda(me.kills, me.deaths, me.assists);
 
   return (
@@ -111,55 +114,31 @@ export function MatchCard({
         </svg>
       </summary>
 
-      <div className="grid gap-6 border-t border-line px-5 py-5 lg:grid-cols-2">
-        {!match.remake && me.position && region && (
-          <div className="lg:col-span-2">
-            <MatchAnalysisView matchId={match.matchId} puuid={me.puuid} region={region.slug} lang={locale} labels={dict.analysis} />
-          </div>
-        )}
-        {teams.map((team, i) => {
-          const won = team[0]?.win;
-          const kills = team.reduce((s, x) => s + x.kills, 0);
-          return (
-            <div key={i}>
-              <div className="mb-2 flex items-baseline justify-between">
-                <p className="text-xs font-medium" style={{ color: match.remake ? undefined : won ? "var(--color-win)" : "var(--color-loss)" }}>
-                  {match.remake ? p.team : won ? p.victory : p.defeat}
-                  <span className="ml-1.5 font-normal text-faint">{i === 0 ? p.blue : p.red}</span>
-                </p>
-                <p className="tabular text-[11px] text-faint">{kills} K</p>
-              </div>
-              <ul className="space-y-1">
-                {team.map((pl) => (
-                  <li
-                    key={pl.puuid}
-                    className={`grid grid-cols-[22px_minmax(0,1fr)_64px_72px] items-center gap-2.5 rounded-md px-1.5 py-1 text-xs ${
-                      pl.puuid === me.puuid ? "bg-panel-3" : ""
-                    }`}
-                  >
-                    <ChampionIcon data={data} championId={pl.championId} size={22} className="rounded-md" />
-                    {pl.gameName && region ? (
-                      <Link href={summonerPath(locale, region.slug, pl.gameName, pl.tagLine ?? "")} className="truncate hover:text-accent">
-                        {pl.gameName}
-                      </Link>
-                    ) : (
-                      <span className="text-faint">—</span>
-                    )}
-                    <span className="tabular text-right text-muted">
-                      {pl.kills}/{pl.deaths}/{pl.assists}
-                    </span>
-                    <span className="flex items-center gap-1.5" title={`${p.damage}: ${formatInt(pl.damage, locale)} · ${p.gold}: ${thousands(pl.gold)}`}>
-                      <span className="h-1 flex-1 overflow-hidden rounded-full bg-panel-3">
-                        <span className="block h-full rounded-full bg-fg/60" style={{ width: `${(pl.damage / maxDamage) * 100}%` }} />
-                      </span>
-                      <span className="tabular w-7 text-right text-[10px] text-faint">{thousands(pl.damage)}</span>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          );
-        })}
+      <div className="border-t border-line">
+        <MatchDetails
+          overview={<MatchOverview m={m} data={data} dict={dict} locale={locale} ranks={ranks} />}
+          teams={<MatchTeams m={m} data={data} dict={dict} locale={locale} />}
+          matchId={match.matchId}
+          region={region?.slug ?? "euw"}
+          lang={locale}
+          me={me.puuid}
+          players={participants.map(
+            (pl): PlayerMeta => ({
+              participantId: pl.participantId,
+              puuid: pl.puuid,
+              teamId: pl.teamId,
+              name: pl.gameName ?? "—",
+              championName: data.champions[pl.championId]?.name ?? "?",
+              icon: data.champions[pl.championId] ? ddragonImg.champion(data.version, data.champions[pl.championId]!.id) : "",
+              position: pl.position,
+              perks: pl.perks ?? [],
+              shards: pl.shards ?? [],
+              primaryStyle: pl.primaryStyle,
+              subStyle: pl.subStyle,
+            }),
+          )}
+          labels={{ d: dict.matchDetails, a: dict.analysis, victory: p.victory, defeat: p.defeat, blue: p.blue, red: p.red }}
+        />
       </div>
     </details>
   );

@@ -66,6 +66,21 @@ alter table participants add column if not exists xp_at integer[];
 alter table participants add column if not exists purchases integer[];
 alter table participants add column if not exists skill_order varchar;
 alter table participants add column if not exists vision integer;
+-- Riot IDs para el índice de sugerencias de búsqueda de la web
+alter table participants add column if not exists game_name varchar;
+alter table participants add column if not exists tag_line varchar;
+create table if not exists published_accounts (puuid varchar primary key);
+-- Ficha detallada de campeón: tipos de daño, curación, racha y CS de jungla
+alter table participants add column if not exists physical integer;
+alter table participants add column if not exists magic integer;
+alter table participants add column if not exists true_damage integer;
+alter table participants add column if not exists heal integer;
+alter table participants add column if not exists spree integer;
+alter table participants add column if not exists neutral_cs integer;
+alter table participants add column if not exists taken integer;
+-- Objetivos por equipo: {"100": {"tower": {"first": true, "kills": 5}, …}, "200": {…}}
+alter table matches add column if not exists teams varchar;
+alter table participants add column if not exists purchase_t integer[];
 `;
 
 export class Lake {
@@ -146,9 +161,12 @@ export class Lake {
     await this.conn.run("begin");
     try {
       await this.conn.run(
-        `insert into matches (match_id, platform, patch, queue_id, game_creation, duration, bracket)
-         values ($1, $2, $3, $4, $5, $6, $7) on conflict do nothing`,
-        [metadata.matchId, info.platformId.toLowerCase(), patchFromVersion(info.gameVersion), info.queueId, info.gameCreation, info.gameDuration, bracket],
+        `insert into matches (match_id, platform, patch, queue_id, game_creation, duration, bracket, teams)
+         values ($1, $2, $3, $4, $5, $6, $7, $8) on conflict do nothing`,
+        [
+          metadata.matchId, info.platformId.toLowerCase(), patchFromVersion(info.gameVersion), info.queueId, info.gameCreation, info.gameDuration, bracket,
+          JSON.stringify(Object.fromEntries(info.teams.map((t) => [String(t.teamId), t.objectives ?? {}]))),
+        ],
       );
       for (const p of info.participants) {
         const primary = p.perks.styles.find((s) => s.description === "primaryStyle");
@@ -162,13 +180,18 @@ export class Lake {
           // (jugador sin objetos, partida sin fragmentos) no se queda sin tipo.
           `insert into participants values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
              $13::integer[], $14, $15, $16, $17, $18::integer[], $19::integer[],
-             $20::integer[], $21::integer[], $22::integer[], $23::integer[], $24, $25)`,
+             $20::integer[], $21::integer[], $22::integer[], $23::integer[], $24, $25, $26, $27,
+             $28, $29, $30, $31, $32, $33, $34, $35::integer[])`,
           [
             metadata.matchId, p.puuid, p.teamId, p.championId, p.teamPosition || "", p.win,
             p.kills, p.deaths, p.assists, p.totalMinionsKilled + p.neutralMinionsKilled, p.goldEarned, p.totalDamageDealtToChampions,
             JSON.stringify([p.item0, p.item1, p.item2, p.item3, p.item4, p.item5].filter(Boolean)),
             p.summoner1Id, p.summoner2Id, primary?.style ?? 0, sub?.style ?? 0, JSON.stringify(perks), JSON.stringify(shards),
             json(tl?.csAt), json(tl?.goldAt), json(tl?.xpAt), json(tl?.purchases), tl?.skillOrder ?? null, p.visionScore,
+            p.riotIdGameName ?? null, p.riotIdTagline ?? null,
+            p.physicalDamageDealtToChampions ?? null, p.magicDamageDealtToChampions ?? null, p.trueDamageDealtToChampions ?? null,
+            p.totalHeal ?? null, p.largestKillingSpree ?? null, p.neutralMinionsKilled, p.totalDamageTaken,
+            json(tl?.purchaseTimes),
           ],
         );
       }
