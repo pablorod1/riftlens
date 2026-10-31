@@ -1,6 +1,8 @@
-/** URL del perfil: /summoner/euw/Nombre-TAG (como op.gg). */
-export function summonerPath(regionSlug: string, gameName: string, tagLine: string) {
-  return `/summoner/${regionSlug}/${encodeURIComponent(`${gameName}-${tagLine}`)}`;
+import { intlLocale, localePath, type Locale } from "@/i18n/config";
+
+/** URL del perfil: /es/summoner/euw/Nombre-TAG (como op.gg). */
+export function summonerPath(locale: Locale, regionSlug: string, gameName: string, tagLine: string) {
+  return localePath(locale, `/summoner/${regionSlug}/${encodeURIComponent(`${gameName}-${tagLine}`)}`);
 }
 
 /** "Nombre con espacios-TAG" -> { gameName, tagLine }. El tag nunca lleva guiones. */
@@ -18,9 +20,8 @@ export function parseRiotIdQuery(q: string, defaultTag: string) {
   return { gameName: name, tagLine: tag || defaultTag };
 }
 
-const rtf = new Intl.RelativeTimeFormat("es", { numeric: "auto" });
-
-export function timeAgo(ms: number, now: number) {
+export function timeAgo(ms: number, now: number, locale: Locale) {
+  const rtf = new Intl.RelativeTimeFormat(intlLocale[locale], { numeric: "auto" });
   const s = Math.round((ms - now) / 1000);
   const abs = Math.abs(s);
   if (abs < 60) return rtf.format(s, "second");
@@ -38,8 +39,8 @@ export function duration(seconds: number) {
 
 export const pct = (x: number, digits = 0) => `${(x * 100).toFixed(digits)}%`;
 
-export const fmtKda = (k: number) => (Number.isFinite(k) ? k.toFixed(2) : "Perfecto");
+export const fmtKda = (k: number, perfect: string) => (Number.isFinite(k) ? k.toFixed(2) : perfect);
 
 export const thousands = (n: number) => (n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
 
-export const int = new Intl.NumberFormat("es-ES");
+export const formatInt = (n: number, locale: Locale) => new Intl.NumberFormat(intlLocale[locale]).format(n);

@@ -1,5 +1,5 @@
 import { loadLadder } from "@riftlens/core";
-import { regionBySlug, REGIONS, TIER_LABELS, type Tier } from "@riftlens/riot";
+import { regionBySlug, REGIONS, type Tier } from "@riftlens/riot";
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
@@ -8,14 +8,17 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { SiteHeader } from "@/components/site-header";
 import { rankCrest } from "@/lib/assets";
-import { int, pct, summonerPath, timeAgo } from "@/lib/format";
+import { localePath, t } from "@/i18n/config";
+import { getDictionary, getLocale } from "@/i18n/server";
+import { formatInt, pct, summonerPath, timeAgo } from "@/lib/format";
 import { db, serverNow } from "@/lib/server";
 
-type Props = PageProps<"/rankings/[region]">;
+type Props = PageProps<"/[lang]/rankings/[region]">;
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { region } = await params;
-  return { title: `Ranking Solo/Dúo ${region.toUpperCase()}` };
+  const dict = await getDictionary();
+  return { title: t(dict.meta.ladder, { region: region.toUpperCase() }) };
 }
 
 export default function RankingsPage({ params, searchParams }: Props) {
@@ -39,6 +42,8 @@ async function Ladder({ params, searchParams }: Pick<Props, "params" | "searchPa
   if (!region) notFound();
   const page = Math.max(1, Number(Array.isArray(sp.page) ? sp.page[0] : sp.page) || 1);
 
+  const [locale, dict] = await Promise.all([getLocale(), getDictionary()]);
+  const L = dict.ladder;
   const ladder = await loadLadder(db(), region.platform, { page });
   const pages = Math.max(1, Math.ceil(ladder.total / ladder.pageSize));
   const now = serverNow();
@@ -47,17 +52,21 @@ async function Ladder({ params, searchParams }: Pick<Props, "params" | "searchPa
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Ranking Solo/Dúo</h1>
+          <h1 className="text-2xl font-bold">{L.title}</h1>
           <p className="text-sm text-muted">
-            {region.label} · {int.format(ladder.total)} jugadores en Maestro+
-            {ladder.updatedAt && <> · actualizado {timeAgo(ladder.updatedAt.getTime(), now)}</>}
+            {t(L.summary, {
+              region: dict.regions[region.slug as keyof typeof dict.regions],
+              n: formatInt(ladder.total, locale),
+            })}
+            {ladder.updatedAt && <> · {t(L.updated, { when: timeAgo(ladder.updatedAt.getTime(), now, locale) })}</>}
           </p>
         </div>
-        <nav className="flex flex-wrap gap-1" aria-label="Región">
+        <nav className="flex flex-wrap gap-1" aria-label={dict.search.region}>
           {REGIONS.map((r) => (
             <Link
               key={r.slug}
-              href={`/rankings/${r.slug}`}
+              href={localePath(locale, `/rankings/${r.slug}`)}
+              title={dict.regions[r.slug]}
               className={`rounded-md px-2 py-1 text-xs font-semibold uppercase ${
                 r.slug === region.slug ? "bg-accent text-bg" : "bg-panel text-muted hover:text-fg"
               }`}
@@ -70,7 +79,7 @@ async function Ladder({ params, searchParams }: Pick<Props, "params" | "searchPa
 
       {ladder.total === 0 ? (
         <div className="rounded-xl border border-line bg-panel p-6 text-sm text-muted">
-          Todavía no hay datos de esta región. Ejecuta el worker:{" "}
+          {L.empty}{" "}
           <code className="rounded bg-panel-2 px-1.5 py-0.5 text-fg">bun run worker:ladder -- --region {region.slug}</code>
         </div>
       ) : (
@@ -79,10 +88,10 @@ async function Ladder({ params, searchParams }: Pick<Props, "params" | "searchPa
             <thead>
               <tr className="border-b border-line text-left text-xs uppercase tracking-wider text-faint">
                 <th className="w-16 px-4 py-3 text-center font-semibold">#</th>
-                <th className="px-2 py-3 font-semibold">Invocador</th>
-                <th className="px-2 py-3 font-semibold">Liga</th>
-                <th className="px-2 py-3 text-right font-semibold">LP</th>
-                <th className="px-4 py-3 font-semibold">Winrate</th>
+                <th className="px-2 py-3 font-semibold">{L.player}</th>
+                <th className="px-2 py-3 font-semibold">{L.league}</th>
+                <th className="px-2 py-3 text-right font-semibold">{L.lp}</th>
+                <th className="px-4 py-3 font-semibold">{L.winrate}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
@@ -94,17 +103,17 @@ async function Ladder({ params, searchParams }: Pick<Props, "params" | "searchPa
                     <td className="tabular px-4 py-2 text-center font-semibold text-muted">{r.position}</td>
                     <td className="px-2 py-2">
                       {r.gameName ? (
-                        <Link href={summonerPath(region.slug, r.gameName, r.tagLine ?? "")} className="font-medium hover:text-accent">
+                        <Link href={summonerPath(locale, region.slug, r.gameName, r.tagLine ?? "")} className="font-medium hover:text-accent">
                           {r.gameName}
                           <span className="ml-1 text-faint">#{r.tagLine}</span>
                         </Link>
                       ) : (
-                        <span className="text-faint" title="Riot ID pendiente de resolver">
-                          Resolviendo…
+                        <span className="text-faint" title={L.resolvingTitle}>
+                          {L.resolving}
                         </span>
                       )}
                       {r.hotStreak && (
-                        <span className="ml-2 text-xs" title="En racha">
+                        <span className="ml-2 text-xs" title={L.hotStreak}>
                           🔥
                         </span>
                       )}
@@ -112,17 +121,17 @@ async function Ladder({ params, searchParams }: Pick<Props, "params" | "searchPa
                     <td className="px-2 py-2">
                       <span className="flex items-center gap-1.5">
                         <Image src={rankCrest(r.tier)} alt="" width={20} height={20} />
-                        {TIER_LABELS[r.tier as Tier]}
+                        {dict.tiers[r.tier as Tier]}
                       </span>
                     </td>
-                    <td className="tabular px-2 py-2 text-right font-semibold">{int.format(r.leaguePoints)}</td>
+                    <td className="tabular px-2 py-2 text-right font-semibold">{formatInt(r.leaguePoints, locale)}</td>
                     <td className="px-4 py-2">
                       <div className="flex items-center gap-3">
                         <div className="flex h-4 w-32 overflow-hidden rounded text-[10px] font-semibold leading-4">
                           <div className="bg-win pl-1" style={{ width: `${wr * 100}%` }}>
-                            {r.wins}V
+                            {t(L.wins, { n: r.wins })}
                           </div>
-                          <div className="flex-1 bg-loss pr-1 text-right">{r.losses}D</div>
+                          <div className="flex-1 bg-loss pr-1 text-right">{t(L.losses, { n: r.losses })}</div>
                         </div>
                         <span className="tabular w-10 text-xs">{pct(wr)}</span>
                       </div>
@@ -136,18 +145,18 @@ async function Ladder({ params, searchParams }: Pick<Props, "params" | "searchPa
       )}
 
       {pages > 1 && (
-        <nav className="flex items-center justify-center gap-2 text-sm" aria-label="Paginación">
+        <nav className="flex items-center justify-center gap-2 text-sm" aria-label={L.pagination}>
           {page > 1 && (
             <Link href={`?page=${page - 1}`} className="rounded-md bg-panel px-3 py-1.5 hover:text-accent">
-              ← Anterior
+              {L.prev}
             </Link>
           )}
           <span className="tabular px-2 text-muted">
-            Página {page} de {pages}
+            {t(L.page, { page, pages })}
           </span>
           {page < pages && (
             <Link href={`?page=${page + 1}`} className="rounded-md bg-panel px-3 py-1.5 hover:text-accent">
-              Siguiente →
+              {L.next}
             </Link>
           )}
         </nav>

@@ -1,7 +1,9 @@
 import { REGIONS } from "@riftlens/riot";
 import { searchSummoner } from "@/app/actions";
+import { getDictionary, getLocale } from "@/i18n/server";
 
-export function SearchForm({ size = "lg", defaultRegion = "euw" }: { size?: "lg" | "sm"; defaultRegion?: string }) {
+export async function SearchForm({ size = "lg", defaultRegion = "euw" }: { size?: "lg" | "sm"; defaultRegion?: string }) {
+  const [locale, dict] = await Promise.all([getLocale(), getDictionary()]);
   const lg = size === "lg";
   return (
     <form
@@ -11,8 +13,9 @@ export function SearchForm({ size = "lg", defaultRegion = "euw" }: { size?: "lg"
         lg ? "h-14" : "h-10"
       }`}
     >
+      <input type="hidden" name="lang" value={locale} />
       <label className="sr-only" htmlFor={`region-${size}`}>
-        Región
+        {dict.search.region}
       </label>
       <select
         id={`region-${size}`}
@@ -23,7 +26,7 @@ export function SearchForm({ size = "lg", defaultRegion = "euw" }: { size?: "lg"
         }`}
       >
         {REGIONS.map((r) => (
-          <option key={r.slug} value={r.slug}>
+          <option key={r.slug} value={r.slug} title={dict.regions[r.slug]}>
             {r.slug.toUpperCase()}
           </option>
         ))}
@@ -33,7 +36,7 @@ export function SearchForm({ size = "lg", defaultRegion = "euw" }: { size?: "lg"
         required
         autoComplete="off"
         spellCheck={false}
-        placeholder="Nombre#TAG"
+        placeholder={dict.search.placeholder}
         aria-label="Riot ID"
         className={`min-w-0 flex-1 bg-transparent text-fg outline-none placeholder:text-faint ${
           lg ? "px-4 text-lg" : "px-3 text-sm"
@@ -43,7 +46,7 @@ export function SearchForm({ size = "lg", defaultRegion = "euw" }: { size?: "lg"
         type="submit"
         className={`bg-accent font-semibold text-bg transition-colors hover:bg-accent-strong ${lg ? "px-6" : "px-3 text-sm"}`}
       >
-        Buscar
+        {dict.search.button}
       </button>
     </form>
   );

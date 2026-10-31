@@ -3,7 +3,6 @@
  * Es un CDN público de Riot; no consume cuota de la API.
  */
 const CDN = "https://ddragon.leagueoflegends.com";
-const LOCALE = "es_ES";
 
 export interface ChampionInfo {
   /** Clave numérica de la API de partidas (p. ej. 103) */
@@ -36,9 +35,14 @@ export async function latestVersion(fetchImpl: typeof fetch = fetch): Promise<st
   return versions[0]!;
 }
 
-export async function loadStaticData(version?: string, fetchImpl: typeof fetch = fetch): Promise<StaticData> {
+export async function loadStaticData(
+  /** Idioma de Data Dragon: "es_ES", "en_US"… */
+  locale = "en_US",
+  version?: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<StaticData> {
   const v = version ?? (await latestVersion(fetchImpl));
-  const base = `${CDN}/cdn/${v}/data/${LOCALE}`;
+  const base = `${CDN}/cdn/${v}/data/${locale}`;
 
   type ChampJson = { data: Record<string, { key: string; id: string; name: string; title: string; tags: string[] }> };
   type ItemJson = { data: Record<string, { name: string; plaintext: string; gold: { total: number } }> };

@@ -20,7 +20,7 @@ packages/
 bun install
 cp .env.example .env        # pon tu RIOT_API_KEY (developer.riotgames.com)
 bun run db:push             # crea data/riftlens.db
-bun run dev                 # http://localhost:3000
+bun run dev                 # http://localhost:3000 (redirige a /en o /es)
 ```
 
 Ranking de Maestro+ (el worker lo rellena):
@@ -33,6 +33,16 @@ bun run worker:ladder -- --watch            # cada 30 min
 
 Con la clave de desarrollo (100 peticiones / 2 min) resolver todos los Riot ID de Maestro+ tarda un rato: el ranking aparece al momento y los nombres se van rellenando.
 
+## Idiomas
+
+Rutas con prefijo (`/en/...`, `/es/...`). `apps/web/src/proxy.ts` redirige las URLs sin idioma según la cookie `NEXT_LOCALE` o `Accept-Language` (por defecto, inglés).
+
+Para añadir un idioma:
+1. Copia `apps/web/src/i18n/dictionaries/en.ts` (TypeScript avisa si falta alguna clave respecto a `es.ts`).
+2. Añádelo en `apps/web/src/i18n/config.ts` (`locales`, `localeNames`, `intlLocale`, `ddragonLocale`) y en `server.ts`.
+
+Los nombres de campeones, objetos y runas vienen traducidos de Data Dragon.
+
 ## Arquitectura
 
 | Pieza | Dónde | Notas |
@@ -43,7 +53,7 @@ Con la clave de desarrollo (100 peticiones / 2 min) resolver todos los Riot ID d
 
 ## Hoja de ruta
 
-1. ✅ Buscador por Riot ID, perfil (rango, historial, campeones) y rankings Maestro+
+1. ✅ Buscador por Riot ID, perfil (rango, historial, campeones) y rankings Maestro+, en inglés y español
 2. Crawler y agregados: builds, runas, matchups y tier list (Esmeralda+, EUW) → pedir production key
 3. Diferenciadores: matchups personalizados (bayesiano global + tu historial), coach comparativo minuto a minuto, optimizador de pool
 4. Partida en directo, más regiones y elos; resumen de partida con IA

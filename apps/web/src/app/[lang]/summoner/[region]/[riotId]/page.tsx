@@ -12,24 +12,28 @@ import { RankCard } from "@/components/rank-card";
 import { RecentSummary } from "@/components/recent-summary";
 import { RefreshButton } from "@/components/refresh-button";
 import { SiteHeader } from "@/components/site-header";
+import { t } from "@/i18n/config";
+import { getDictionary, getLocale } from "@/i18n/server";
 import { parseRiotIdSlug, timeAgo } from "@/lib/format";
 import { db, riot, serverNow } from "@/lib/server";
 import { getStaticData } from "@/lib/static-data";
 
-type Props = PageProps<"/summoner/[region]/[riotId]">;
+type Props = PageProps<"/[lang]/summoner/[region]/[riotId]">;
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { region, riotId } = await params;
   const id = parseRiotIdSlug(riotId);
-  return { title: id ? `${id.gameName}#${id.tagLine} (${region.toUpperCase()})` : "Invocador" };
+  const dict = await getDictionary();
+  return { title: id ? `${id.gameName}#${id.tagLine} (${region.toUpperCase()})` : dict.meta.summoner };
 }
 
-export default function SummonerPage({ params }: Props) {
+export default async function SummonerPage({ params }: Props) {
+  const dict = await getDictionary();
   return (
     <>
       <SiteHeader />
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">
-        <Suspense fallback={<ProfileSkeleton />}>
+        <Suspense fallback={<ProfileSkeleton dict={dict} />}>
           <ProfileContent params={params} />
         </Suspense>
       </main>
@@ -59,7 +63,8 @@ async function ProfileContent({ params }: Pick<Props, "params">) {
     }
   }
 
-  const [profile, data] = await Promise.all([loadProfile(db(), region.platform, puuid), getStaticData()]);
+  const [locale, dict] = await Promise.all([getLocale(), getDictionary()]);
+  const [profile, data] = await Promise.all([loadProfile(db(), region.platform, puuid), getStaticData(locale)]);
   if (!profile) notFound();
   const now = serverNow();
   const solo = profile.entries.find((e) => e.queueType === "RANKED_SOLO_5x5");
@@ -87,26 +92,34 @@ async function ProfileContent({ params }: Pick<Props, "params">) {
             <span className="ml-1 font-normal text-muted">#{profile.account.tagLine}</span>
           </h1>
           <p className="mt-0.5 text-sm text-muted">
-            {region.label} · actualizado {timeAgo(profile.summoner.refreshedAt.getTime(), now)}
+            {dict.regions[region.slug as keyof typeof dict.regions]} ·{" "}
+            {t(dict.profile.updated, { when: timeAgo(profile.summoner.refreshedAt.getTime(), now, locale) })}
           </p>
           <div className="mt-3">
-            <RefreshButton region={region.slug} puuid={puuid} />
+            <RefreshButton
+              region={region.slug}
+              puuid={puuid}
+              lang={locale}
+              labels={{ refresh: dict.profile.refresh, refreshing: dict.profile.refreshing }}
+            />
           </div>
         </div>
       </section>
 
       <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
         <aside className="space-y-4">
-          <RankCard title="Clasificatoria Solo/Dúo" entry={solo} />
-          <RankCard title="Clasificatoria Flexible" entry={flex} />
-          <ChampionStats data={data} champions={profile.champions} />
+          <RankCard title={dict.profile.soloQueue} entry={solo} dict={dict} />
+          <RankCard title={dict.profile.flexQueue} entry={flex} dict={dict} />
+          <ChampionStats data={data} champions={profile.champions} dict={dict} />
         </aside>
         <div className="min-w-0 space-y-3">
-          <RecentSummary matches={profile.matches} />
+          <RecentSummary matches={profile.matches} dict={dict} />
           {profile.matches.length === 0 ? (
-            <p className="rounded-xl border border-line bg-panel p-6 text-sm text-faint">No hay partidas recientes.</p>
+            <p className="rounded-xl border border-line bg-panel p-6 text-sm text-faint">{dict.profile.noMatches}</p>
           ) : (
-            profile.matches.map((m) => <MatchCard key={m.match.matchId} m={m} data={data} now={now} />)
+            profile.matches.map((m) => (
+              <MatchCard key={m.match.matchId} m={m} data={data} now={now} dict={dict} locale={locale} />
+            ))
           )}
         </div>
       </div>
@@ -114,9 +127,9 @@ async function ProfileContent({ params }: Pick<Props, "params">) {
   );
 }
 
-function ProfileSkeleton() {
+function ProfileSkeleton({ dict }: { dict: Awaited<ReturnType<typeof getDictionary>> }) {
   return (
-    <div className="animate-pulse space-y-6" aria-label="Cargando perfil">
+    <div className="animate-pulse space-y-6" aria-label={dict.profile.loadingLabel}>
       <div className="flex items-center gap-5">
         <div className="size-22 rounded-2xl bg-panel" />
         <div className="space-y-2">
@@ -136,7 +149,7 @@ function ProfileSkeleton() {
           ))}
         </div>
       </div>
-      <p className="text-center text-sm text-muted">Descargando partidas de Riot… la primera vez tarda unos segundos.</p>
+      <p className="text-center text-sm text-muted">{dict.profile.loading}</p>
     </div>
   );
 }

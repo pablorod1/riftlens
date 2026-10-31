@@ -1,11 +1,13 @@
 import { confidence, SMALL_SAMPLE, wilson } from "@riftlens/core";
+import { t } from "@/i18n/config";
+import type { Dictionary } from "@/i18n/server";
 import { pct } from "@/lib/format";
 
 /**
  * Winrate con su intervalo de confianza al 95 %. La barra muestra el rango
  * plausible del winrate real; cuanto más ancha, menos fiable es la cifra.
  */
-export function Winrate({ wins, games }: { wins: number; games: number }) {
+export function Winrate({ wins, games, dict }: { wins: number; games: number; dict: Dictionary }) {
   const wr = games ? wins / games : 0;
   const { low, high } = wilson(wins, games);
   const conf = confidence(games);
@@ -13,7 +15,7 @@ export function Winrate({ wins, games }: { wins: number; games: number }) {
   return (
     <div
       className="w-24"
-      title={`Winrate real probable entre ${pct(low)} y ${pct(high)} (95 %, ${games} partidas). Confianza ${conf}.`}
+      title={t(dict.profile.ciTooltip, { low: pct(low), high: pct(high), n: games, confidence: dict.profile.confidence[conf] })}
     >
       <div className="tabular flex items-baseline justify-between text-sm">
         <span className="font-semibold" style={{ color }}>

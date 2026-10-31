@@ -1,12 +1,15 @@
 import type { ProfileMatch } from "@riftlens/core";
 import { kda } from "@riftlens/core";
-import { POSITION_LABELS, type Position } from "@riftlens/riot";
+import type { Position } from "@riftlens/riot";
 import Image from "next/image";
+import { t } from "@/i18n/config";
+import type { Dictionary } from "@/i18n/server";
 import { positionIcon } from "@/lib/assets";
 import { fmtKda, pct } from "@/lib/format";
 
 /** Resumen de las últimas partidas (sin remakes). */
-export function RecentSummary({ matches }: { matches: ProfileMatch[] }) {
+export function RecentSummary({ matches, dict }: { matches: ProfileMatch[]; dict: Dictionary }) {
+  const p = dict.profile;
   const valid = matches.filter((m) => !m.match.remake);
   if (!valid.length) return null;
   const wins = valid.filter((m) => m.me.win).length;
@@ -44,18 +47,16 @@ export function RecentSummary({ matches }: { matches: ProfileMatch[] }) {
           </text>
         </svg>
         <div className="text-sm">
-          <p className="text-xs uppercase tracking-wider text-muted">Últimas {n}</p>
-          <p className="tabular">
-            {wins}V {n - wins}D
-          </p>
+          <p className="text-xs uppercase tracking-wider text-muted">{t(p.last, { n })}</p>
+          <p className="tabular">{t(p.winsLosses, { w: wins, l: n - wins })}</p>
         </div>
       </div>
       <div className="tabular text-sm">
         <p>
           {(sum.k / n).toFixed(1)} / <span className="text-loss">{(sum.d / n).toFixed(1)}</span> / {(sum.a / n).toFixed(1)}
         </p>
-        <p className="text-lg font-bold">{fmtKda(kda(sum.k, sum.d, sum.a))} KDA</p>
-        <p className="text-xs text-muted">P/Kill {pct(sum.kp / n)}</p>
+        <p className="text-lg font-bold">{t(p.kda, { kda: fmtKda(kda(sum.k, sum.d, sum.a), p.perfect) })}</p>
+        <p className="text-xs text-muted">{t(p.kp, { pct: pct(sum.kp / n) })}</p>
       </div>
       {topPositions.length > 0 && (
         <div className="flex gap-4">
@@ -65,7 +66,7 @@ export function RecentSummary({ matches }: { matches: ProfileMatch[] }) {
               <div key={pos} className="flex items-center gap-2 text-sm">
                 {icon && <Image src={icon} alt="" width={22} height={22} />}
                 <div>
-                  <p>{POSITION_LABELS[pos as Position] ?? pos}</p>
+                  <p>{dict.positions[pos as Position] ?? pos}</p>
                   <p className="tabular text-xs text-muted">{pct(count / n)}</p>
                 </div>
               </div>

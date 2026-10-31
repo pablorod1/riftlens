@@ -1,27 +1,41 @@
 import type { ProfileMatch } from "@riftlens/core";
 import { kda } from "@riftlens/core";
-import { regionByPlatform, queueName, type StaticData } from "@riftlens/riot";
+import { regionByPlatform, type StaticData } from "@riftlens/riot";
 import Link from "next/link";
-import { duration, fmtKda, int, pct, summonerPath, thousands, timeAgo } from "@/lib/format";
+import { t, type Locale } from "@/i18n/config";
+import type { Dictionary } from "@/i18n/server";
+import { duration, fmtKda, formatInt, pct, summonerPath, thousands, timeAgo } from "@/lib/format";
 import { ChampionIcon, ItemIcon, RuneIcon, SpellIcon } from "./icons";
 
-const MULTI = { 2: "Doble", 3: "Triple", 4: "Cuádruple", 5: "Pentakill" } as Record<number, string>;
-
-function outcome(m: ProfileMatch) {
-  if (m.match.remake) return { label: "Remake", color: "var(--color-remake)", bg: "var(--color-panel)" } as const;
+function outcome(m: ProfileMatch, p: Dictionary["profile"]) {
+  if (m.match.remake) return { label: p.remake, color: "var(--color-remake)", bg: "var(--color-panel)" } as const;
   return m.me.win
-    ? ({ label: "Victoria", color: "var(--color-win)", bg: "var(--color-win-bg)" } as const)
-    : ({ label: "Derrota", color: "var(--color-loss)", bg: "var(--color-loss-bg)" } as const);
+    ? ({ label: p.victory, color: "var(--color-win)", bg: "var(--color-win-bg)" } as const)
+    : ({ label: p.defeat, color: "var(--color-loss)", bg: "var(--color-loss-bg)" } as const);
 }
 
-export function MatchCard({ m, data, now }: { m: ProfileMatch; data: StaticData; now: number }) {
+export function MatchCard({
+  m,
+  data,
+  now,
+  dict,
+  locale,
+}: {
+  m: ProfileMatch;
+  data: StaticData;
+  now: number;
+  dict: Dictionary;
+  locale: Locale;
+}) {
   const { me, match, participants } = m;
-  const o = outcome(m);
+  const p = dict.profile;
+  const o = outcome(m, p);
+  const queue = dict.queues[String(match.queueId) as keyof Dictionary["queues"]] ?? dict.queues.other;
   const minutes = match.gameDuration / 60;
-  const teamKills = participants.filter((p) => p.teamId === me.teamId).reduce((s, p) => s + p.kills, 0);
+  const teamKills = participants.filter((x) => x.teamId === me.teamId).reduce((sum, x) => sum + x.kills, 0);
   const kp = teamKills ? (me.kills + me.assists) / teamKills : 0;
   const region = regionByPlatform(match.platform);
-  const teams = [100, 200].map((t) => participants.filter((p) => p.teamId === t));
+  const teams = [100, 200].map((team) => participants.filter((x) => x.teamId === team));
 
   return (
     <details className="group overflow-hidden rounded-xl border border-line" style={{ background: o.bg }}>
@@ -29,9 +43,9 @@ export function MatchCard({ m, data, now }: { m: ProfileMatch; data: StaticData;
         {/* Cola, resultado, tiempo */}
         <div className="w-24 shrink-0 text-xs">
           <p className="font-semibold" style={{ color: o.color }}>
-            {queueName(match.queueId)}
+            {queue}
           </p>
-          <p className="text-muted">{timeAgo(match.gameCreation, now)}</p>
+          <p className="text-muted">{timeAgo(match.gameCreation, now, locale)}</p>
           <div className="my-1.5 h-px w-10 bg-line" />
           <p className="font-semibold">{o.label}</p>
           <p className="tabular text-muted">{duration(match.gameDuration)}</p>
@@ -58,19 +72,17 @@ export function MatchCard({ m, data, now }: { m: ProfileMatch; data: StaticData;
           <p className="tabular font-bold">
             {me.kills} / <span className="text-loss">{me.deaths}</span> / {me.assists}
           </p>
-          <p className="tabular text-xs text-muted">{fmtKda(kda(me.kills, me.deaths, me.assists))} KDA</p>
+          <p className="tabular text-xs text-muted">{t(p.kda, { kda: fmtKda(kda(me.kills, me.deaths, me.assists), p.perfect) })}</p>
           {me.largestMultiKill >= 2 && (
-            <span className="mt-1 inline-block rounded-full bg-loss/80 px-2 text-[10px] font-semibold">{MULTI[me.largestMultiKill]}</span>
+            <span className="mt-1 inline-block rounded-full bg-loss/80 px-2 text-[10px] font-semibold">{p.multikill[String(me.largestMultiKill) as keyof typeof p.multikill]}</span>
           )}
         </div>
 
         {/* Estadísticas */}
         <div className="tabular hidden w-28 shrink-0 text-xs text-muted md:block">
-          <p>P/Kill {pct(kp)}</p>
-          <p>
-            CS {me.cs} ({(me.cs / minutes).toFixed(1)})
-          </p>
-          <p>Visión {me.visionScore}</p>
+          <p>{t(p.kp, { pct: pct(kp) })}</p>
+          <p>{t(p.cs, { cs: me.cs, perMin: (me.cs / minutes).toFixed(1) })}</p>
+          <p>{t(p.vision, { n: me.visionScore })}</p>
         </div>
 
         {/* Objetos */}
@@ -85,11 +97,11 @@ export function MatchCard({ m, data, now }: { m: ProfileMatch; data: StaticData;
         <div className="ml-auto hidden gap-2 xl:flex">
           {teams.map((team, i) => (
             <ul key={i} className="w-24 space-y-0.5">
-              {team.map((p) => (
-                <li key={p.puuid} className="flex items-center gap-1 text-[11px]">
-                  <ChampionIcon data={data} championId={p.championId} size={15} />
-                  <span className={`truncate ${p.puuid === me.puuid ? "font-semibold text-fg" : "text-muted"}`}>
-                    {p.gameName ?? "—"}
+              {team.map((pl) => (
+                <li key={pl.puuid} className="flex items-center gap-1 text-[11px]">
+                  <ChampionIcon data={data} championId={pl.championId} size={15} />
+                  <span className={`truncate ${pl.puuid === me.puuid ? "font-semibold text-fg" : "text-muted"}`}>
+                    {pl.gameName ?? "—"}
                   </span>
                 </li>
               ))}
@@ -111,24 +123,24 @@ export function MatchCard({ m, data, now }: { m: ProfileMatch; data: StaticData;
               <thead>
                 <tr className="text-left text-faint">
                   <th className="pb-1 font-semibold" style={{ color: match.remake ? undefined : won ? "var(--color-win)" : "var(--color-loss)" }}>
-                    {match.remake ? "Equipo" : won ? "Victoria" : "Derrota"} ({i === 0 ? "azul" : "rojo"})
+                    {match.remake ? p.team : won ? p.victory : p.defeat} ({i === 0 ? p.blue : p.red})
                   </th>
                   <th className="pb-1 text-center font-normal">KDA</th>
-                  <th className="hidden pb-1 text-center font-normal sm:table-cell">Daño</th>
-                  <th className="hidden pb-1 text-center font-normal sm:table-cell">Oro</th>
+                  <th className="hidden pb-1 text-center font-normal sm:table-cell">{p.damage}</th>
+                  <th className="hidden pb-1 text-center font-normal sm:table-cell">{p.gold}</th>
                   <th className="pb-1 text-center font-normal">CS</th>
-                  <th className="hidden pb-1 font-normal md:table-cell">Objetos</th>
+                  <th className="hidden pb-1 font-normal md:table-cell">{p.items}</th>
                 </tr>
               </thead>
               <tbody>
-                {team.map((p) => (
-                  <tr key={p.puuid} className={p.puuid === me.puuid ? "bg-panel-2" : ""}>
+                {team.map((pl) => (
+                  <tr key={pl.puuid} className={pl.puuid === me.puuid ? "bg-panel-2" : ""}>
                     <td className="py-0.5">
                       <div className="flex items-center gap-1.5">
-                        <ChampionIcon data={data} championId={p.championId} size={24} />
-                        {p.gameName && region ? (
-                          <Link href={summonerPath(region.slug, p.gameName, p.tagLine ?? "")} className="truncate hover:text-accent">
-                            {p.gameName}
+                        <ChampionIcon data={data} championId={pl.championId} size={24} />
+                        {pl.gameName && region ? (
+                          <Link href={summonerPath(locale, region.slug, pl.gameName, pl.tagLine ?? "")} className="truncate hover:text-accent">
+                            {pl.gameName}
                           </Link>
                         ) : (
                           <span className="text-muted">—</span>
@@ -136,14 +148,14 @@ export function MatchCard({ m, data, now }: { m: ProfileMatch; data: StaticData;
                       </div>
                     </td>
                     <td className="tabular text-center">
-                      {p.kills}/{p.deaths}/{p.assists}
+                      {pl.kills}/{pl.deaths}/{pl.assists}
                     </td>
-                    <td className="tabular hidden text-center sm:table-cell">{int.format(p.damage)}</td>
-                    <td className="tabular hidden text-center sm:table-cell">{thousands(p.gold)}</td>
-                    <td className="tabular text-center">{p.cs}</td>
+                    <td className="tabular hidden text-center sm:table-cell">{formatInt(pl.damage, locale)}</td>
+                    <td className="tabular hidden text-center sm:table-cell">{thousands(pl.gold)}</td>
+                    <td className="tabular text-center">{pl.cs}</td>
                     <td className="hidden md:table-cell">
                       <div className="flex gap-0.5">
-                        {p.items.map((it, j) => (
+                        {pl.items.map((it, j) => (
                           <ItemIcon key={j} data={data} itemId={it} size={20} />
                         ))}
                       </div>
