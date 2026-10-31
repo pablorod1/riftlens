@@ -1,0 +1,17 @@
+{
+  "name": "@riftlens/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@riftlens/db": "workspace:*",
+    "@riftlens/riot": "workspace:*",
+    "drizzle-orm": "^0.45.4"
+  }
+}

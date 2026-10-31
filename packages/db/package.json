@@ -1,0 +1,24 @@
+{
+  "name": "@riftlens/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p .",
+    "push": "bun --env-file=../../.env drizzle-kit push",
+    "generate": "bun --env-file=../../.env drizzle-kit generate",
+    "studio": "bun --env-file=../../.env drizzle-kit studio"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "drizzle-kit": "^0.31.11"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.18.0",
+    "drizzle-orm": "^0.45.4"
+  }
+}

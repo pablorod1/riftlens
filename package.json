@@ -1,14 +1,20 @@
 {
-  "name": "zapping-zenith",
+  "name": "riftlens",
+  "private": true,
   "type": "module",
-  "version": "0.0.1",
+  "workspaces": ["apps/*", "packages/*"],
+  "packageManager": "bun@1.4.4",
   "scripts": {
-    "dev": "astro dev",
-    "build": "astro build",
-    "preview": "astro preview",
-    "astro": "astro"
+    "dev": "bun run --cwd apps/web dev",
+    "build": "bun run --cwd apps/web build",
+    "typecheck": "bun run --filter '*' typecheck",
+    "db:push": "bun run --cwd packages/db push",
+    "db:generate": "bun run --cwd packages/db generate",
+    "db:studio": "bun run --cwd packages/db studio",
+    "worker:ladder": "bun run --cwd apps/worker ladder"
   },
-  "dependencies": {
-    "astro": "^5.7.12"
+  "devDependencies": {
+    "@types/node": "22",
+    "typescript": "5.9.3"
   }
 }
