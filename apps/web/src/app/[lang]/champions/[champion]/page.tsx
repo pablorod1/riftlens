@@ -1,24 +1,27 @@
-import { BRACKETS, isBracket, latestScope, loadChampion, loadTierList, SMALL_SAMPLE, wilson, type BracketId, type Matchup } from "@riftlens/core";
+import { BRACKETS, isBracket, latestScope, loadChampion, loadTierList, SMALL_SAMPLE, wilson, type BracketId } from "@riftlens/core";
 import type { BuildEntry, ChampionBuild } from "@riftlens/db";
-import { ddragonImg, regionBySlug, type Position, type StaticData } from "@riftlens/riot";
+import { ddragonImg, POSITIONS, regionBySlug, type Position, type StaticData } from "@riftlens/riot";
 import type { Metadata } from "next";
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { DetailedView, DetailHeaderStats } from "@/components/champion/detailed-view";
+import { ChampionHero, SectionNav } from "@/components/champion/hero";
+import { buildLabRows } from "@/components/champion/lab-data";
+import { MatchupLab, type LabChampion } from "@/components/champion/matchup-lab";
+import { Strengths } from "@/components/champion/strengths";
 import { FilterPills } from "@/components/filter-pills";
-import { ChampionIcon, ItemIcon, RuneIcon, SpellIcon } from "@/components/icons";
+import { ItemIcon, RuneIcon, SpellIcon } from "@/components/icons";
 import { SiteHeader } from "@/components/site-header";
 import { TierBadge } from "@/components/tier-badge";
-import { localePath, t, type Locale } from "@/i18n/config";
+import { intlLocale, localePath, t } from "@/i18n/config";
 import { getDictionary, getLocale, type Dictionary } from "@/i18n/server";
 import { positionIcon } from "@/lib/assets";
-import { championBySlug, championSlug, param, slugFromRole } from "@/lib/champions";
+import { championBySlug, param, parseCompare, slugFromRole } from "@/lib/champions";
 import { formatInt, pct } from "@/lib/format";
 import { db } from "@/lib/server";
-import { getStaticData } from "@/lib/static-data";
+import { getChampionLore, getStaticData } from "@/lib/static-data";
 
 type Props = PageProps<"/[lang]/champions/[champion]">;
 
@@ -33,7 +36,7 @@ export default function ChampionPage({ params, searchParams }: Props) {
   return (
     <>
       <SiteHeader />
-      <main className="mx-auto w-full max-w-6xl flex-1 px-5 pt-8 pb-20">
+      <main className="mx-auto w-full max-w-7xl flex-1 px-5 pt-8 pb-20">
         <Suspense
           fallback={
             <div className="space-y-6" aria-busy="true">
@@ -120,31 +123,6 @@ function SkillKey({ k, strong = false }: { k: string; strong?: boolean }) {
   );
 }
 
-function MatchupList({ list, data, dict, locale, query }: { list: Matchup[]; data: StaticData; dict: Dictionary; locale: Locale; query: string }) {
-  return (
-    <ul className="space-y-1">
-      {list.map((m) => {
-        const champ = data.champions[m.opponentId];
-        return (
-          <li key={m.opponentId}>
-            <Link
-              href={localePath(locale, `/champions/${championSlug(data, m.opponentId)}${query}`)}
-              className="flex items-center gap-3 rounded-lg px-2 py-1.5 transition-colors hover:bg-panel-2"
-            >
-              <ChampionIcon data={data} championId={m.opponentId} size={28} className="rounded-md" />
-              <span className="min-w-0 flex-1 truncate text-sm">{champ?.name ?? "?"}</span>
-              <span className="tabular text-sm font-medium" style={{ color: wrColor(m.winrate) }}>
-                {pct(m.winrate, 1)}
-              </span>
-              <span className="tabular w-14 text-right text-[11px] text-faint">{t(dict.champions.gamesN, { n: m.games })}</span>
-            </Link>
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
 async function Champion({ params, searchParams }: Pick<Props, "params" | "searchParams">) {
   const [{ champion: slug }, sp] = await Promise.all([params, searchParams]);
   await connection();
@@ -181,12 +159,61 @@ async function Champion({ params, searchParams }: Pick<Props, "params" | "search
   const rank = role ? peers.findIndex((p) => p.championId === role.championId) + 1 : 0;
   const bracketQuery = bracket !== "emerald_plus" ? `?elo=${bracket}` : "";
   const matchups = (role ? loaded?.matchupsBy.get(role.position) : undefined) ?? [];
-  // Para "mejores/peores" exigimos una muestra mínima y ordenamos por winrate corregido
-  const solid = matchups.filter((m) => m.games >= Math.max(5, Math.round((role?.games ?? 0) * 0.01)));
-  const best = [...solid].sort((a, b) => b.score - a.score).slice(0, 6);
-  const worst = [...solid].sort((a, b) => a.score - b.score).slice(0, 6);
-  const matchupQuery = role ? `?role=${slugFromRole(role.position)}${bracket !== "emerald_plus" ? `&elo=${bracket}` : ""}` : "";
   const ci = role ? wilson(role.wins, role.games) : null;
+  const lore = await getChampionLore(locale, data.version, champ.id);
+
+  // Laboratorio de matchups: filas, campeones referenciados y enlaces a cada "vs"
+  const vsParams = new URLSearchParams();
+  if (role) vsParams.set("role", slugFromRole(role.position) ?? "");
+  if (bracket !== "emerald_plus") vsParams.set("elo", bracket);
+  if (region.slug !== "euw") vsParams.set("region", region.slug);
+  const vsQuery = vsParams.toString() ? `?${vsParams}` : "";
+  const vsBase = localePath(locale, `/champions/${slug}/vs/`);
+  const labRows = role ? buildLabRows({ position: role.position, matchups, detail, peers }) : [];
+  const toLab = (id: number): LabChampion | null => {
+    const c = data.champions[id];
+    return c ? { slug: c.id.toLowerCase(), name: c.name, icon: ddragonImg.champion(data.version, c.id), href: localePath(locale, `/champions/${c.id.toLowerCase()}${bracketQuery}`) } : null;
+  };
+  const allChampions: Record<number, LabChampion> = {};
+  for (const c of Object.values(data.champions)) if (c.key !== champ.key) allChampions[c.key] = toLab(c.key)!;
+  const lab =
+    role && labRows.length > 0 ? (
+      <>
+        <Strengths
+          rows={labRows}
+          champWr={role.winrate}
+          totalGames={role.games}
+          position={role.position}
+          data={data}
+          dict={dict}
+          locale={locale}
+          vsBase={vsBase}
+          vsQuery={vsQuery}
+          bracketQuery={bracketQuery}
+        />
+        <MatchupLab
+          rows={labRows}
+          champs={allChampions}
+          allChampions={allChampions}
+          lanePosition={role.position}
+          champWr={role.winrate}
+          totalGames={role.games}
+          positions={POSITIONS.map((p) => ({ key: p, label: dict.positions[p], icon: positionIcon(p) }))}
+          vsBase={vsBase}
+          vsQuery={vsQuery}
+          initialCompare={parseCompare(data, param(sp.cmp)).filter((id) => id !== champ.key)}
+          labels={dict.lab}
+          intlLocale={intlLocale[locale]}
+        />
+      </>
+    ) : null;
+  const L = dict.lab;
+  const nav = [
+    { id: "build", label: L.nav.build },
+    { id: "matchups", label: L.nav.matchups },
+    { id: "compare", label: L.nav.compare },
+    ...(detail ? [{ id: "synergy", label: L.nav.synergy }, { id: "items", label: L.nav.items }, { id: "runes", label: L.nav.runes }, { id: "stats", label: L.nav.stats }] : []),
+  ];
 
   return (
     <div className="animate-fade-up">
@@ -194,16 +221,9 @@ async function Champion({ params, searchParams }: Pick<Props, "params" | "search
         {C.backToTier}
       </Link>
 
-      <header className="mt-4 flex flex-wrap items-center justify-between gap-6">
-        <div className="flex items-center gap-5">
-          <Image src={ddragonImg.champion(data.version, champ.id)} alt="" width={80} height={80} priority className="rounded-2xl ring-1 ring-line-strong" />
-          <div>
-            <h1 className="text-4xl font-semibold tracking-[-0.03em]">{champ.name}</h1>
-            <p className="mt-1 font-serif text-lg italic text-muted">{champ.title}</p>
-          </div>
-        </div>
+      <ChampionHero champ={champ} data={data} lore={lore} dict={dict}>
         {role && ci && (
-          <dl className="flex flex-wrap items-center gap-x-6 gap-y-4 sm:gap-x-8">
+          <dl className="flex flex-wrap items-center gap-x-6 gap-y-4 rounded-2xl border border-line bg-panel/70 px-5 py-4 backdrop-blur sm:gap-x-8">
             <div className="text-center">
               <dt className="eyebrow">{C.tier}</dt>
               <dd className="mt-1.5">
@@ -231,7 +251,7 @@ async function Champion({ params, searchParams }: Pick<Props, "params" | "search
             </div>
           </dl>
         )}
-      </header>
+      </ChampionHero>
 
       <div className="mt-8 flex flex-wrap items-center gap-3">
         {roles.length > 0 && (
@@ -249,6 +269,8 @@ async function Champion({ params, searchParams }: Pick<Props, "params" | "search
         <FilterPills label={C.bracket} pills={BRACKETS.map((b) => ({ key: b, label: C.brackets[b], href: href({ elo: b }), active: b === bracket }))} />
         {scope && <span className="text-xs text-faint">{t(C.patch, { patch: scope.patch })}</span>}
       </div>
+
+      {role && build && labRows.length > 0 && <SectionNav items={nav} />}
 
       {role && build && detail && scope ? (
         <>
@@ -270,6 +292,7 @@ async function Champion({ params, searchParams }: Pick<Props, "params" | "search
             of={peers.length}
             region={region.slug}
             bracketQuery={bracketQuery}
+            lab={lab}
           />
         </>
       ) : !role || !build ? (
@@ -437,34 +460,9 @@ async function Champion({ params, searchParams }: Pick<Props, "params" | "search
             </Card>
           </div>
 
-          {matchups.length > 0 && (
-            <section className="mt-6">
-              {solid.length >= 2 ? (
-                <div className="grid gap-6 lg:grid-cols-2">
-                  <Card title={C.best}>
-                    <MatchupList list={best} data={data} dict={dict} locale={locale} query={matchupQuery} />
-                  </Card>
-                  <Card title={C.worst}>
-                    <MatchupList list={worst} data={data} dict={dict} locale={locale} query={matchupQuery} />
-                  </Card>
-                </div>
-              ) : (
-                <p className="rounded-2xl border border-dashed border-line-strong px-6 py-8 text-center text-sm text-muted">{C.matchupsLowSample}</p>
-              )}
-              <details className="match group mt-6 rounded-2xl border border-line bg-panel">
-                <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4 [&::-webkit-details-marker]:hidden">
-                  <span className="eyebrow">
-                    {C.allMatchups} · {matchups.length}
-                  </span>
-                  <svg viewBox="0 0 16 16" aria-hidden className="size-4 text-faint transition-transform duration-300 group-open:rotate-180">
-                    <path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </summary>
-                <div className="grid gap-x-6 border-t border-line px-3 py-3 sm:grid-cols-2 lg:grid-cols-3">
-                  <MatchupList list={matchups} data={data} dict={dict} locale={locale} query={matchupQuery} />
-                </div>
-              </details>
-              <p className="mt-3 text-[11px] text-faint">{C.matchupNote}</p>
+          {lab && (
+            <section id="build-matchups" className="mt-6 space-y-6">
+              {lab}
             </section>
           )}
         </>

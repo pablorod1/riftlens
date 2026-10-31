@@ -54,6 +54,7 @@ export function DetailedView({
   of,
   region,
   bracketQuery,
+  lab,
 }: {
   role: ChampionRow;
   detail: ChampionDetail;
@@ -66,8 +67,11 @@ export function DetailedView({
   of: number;
   region: string;
   bracketQuery: string;
+  /** Laboratorio de matchups (tabla, comparador y fortalezas) */
+  lab: React.ReactNode;
 }) {
   const C = dict.champ;
+  const L = dict.lab;
   const champ = data.champions[championId]!;
   const total = role.games;
   const roleName = dict.positions[role.position as Position] ?? role.position;
@@ -117,7 +121,7 @@ export function DetailedView({
         metricLabels={dict.coach.metrics}
       />
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+      <div id="build" className="grid scroll-mt-28 gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="min-w-0 space-y-6">
           <Card title={C.build}>
             <BuildToggle
@@ -126,63 +130,10 @@ export function DetailedView({
               common={<BuildVariantView v={detail.builds.common} data={data} dict={dict} total={total} />}
             />
           </Card>
-
           <Card title={C.trends}>
             <Trends trend={detail.trend} dict={dict} />
           </Card>
-
-          <Card title={`${C.counters} · ${C.synergy}`} help={`${C.delta1Help} ${C.delta2Help}`}>
-            <PairsExplorer
-              counters={detail.counters}
-              synergy={detail.synergy}
-              champWr={role.winrate}
-              totalGames={total}
-              champs={champs}
-              positions={POSITIONS.map((p) => ({ key: p, label: dict.positions[p], icon: positionIcon(p) }))}
-              labels={{
-                counters: C.counters,
-                synergy: C.synergy,
-                common: C.modeCommon,
-                strong: C.modeStrong,
-                weak: C.modeWeak,
-                delta: C.modeDelta,
-                vs: C.vsRole,
-                with: C.withRole,
-                d1: C.delta1,
-                d1Help: C.delta1Help,
-                d2: C.delta2,
-                d2Help: C.delta2Help,
-                pick: C.pickRateShort,
-                games: C.gamesShort,
-              }}
-            />
-          </Card>
-
-          <Card title={C.items}>
-            <ItemsExplorer
-              version={data.version}
-              itemNames={itemNames}
-              totalGames={total}
-              labels={{ pick: C.pickRateShort, games: C.gamesShort, minute: C.avgMinute }}
-              tabs={[
-                { key: "starting", label: C.itemTabs.starting, rows: detail.items.starting.map((s) => ({ key: s.items.join(","), items: s.items, games: s.games, wins: s.wins })) },
-                { key: "early", label: C.itemTabs.early, rows: itemRows(detail.items.early) },
-                ...detail.items.byPosition.map((list, i) => ({ key: `p${i}`, label: t(C.itemN1, { n: i + 1 }), rows: itemRows(list) })),
-                { key: "popular", label: C.itemTabs.popular, rows: itemRows(detail.items.all.slice(0, 24)) },
-                { key: "winning", label: C.itemTabs.winning, rows: itemRows(winning.slice(0, 24)) },
-              ]}
-            />
-          </Card>
-
-          <Card title={C.skillsByLevel} help={C.skillsByLevelHelp}>
-            <SkillLevels levels={detail.skillLevels} dict={dict} />
-          </Card>
-
-          <Card title={C.runeStats} help={C.runeStatsHelp}>
-            <RuneStats stats={detail.runeStats} data={data} total={total} />
-          </Card>
         </div>
-
         <aside className="space-y-6">
           <Card title={C.spells}>
             <ul className="space-y-2.5">
@@ -204,11 +155,74 @@ export function DetailedView({
           <Card title={C.duration}>
             <Duration duration={detail.duration} dict={dict} />
           </Card>
-          <Card title={C.playerBase} help={C.playerBaseHelp}>
-            <PlayerBase base={detail.playerBase} dict={dict} />
+        </aside>
+      </div>
+
+      {lab}
+
+      <div id="synergy" className="scroll-mt-28">
+        <Card title={`${L.nav.synergy} · ${C.synergy}`} help={`${C.delta1Help} ${C.delta2Help}`}>
+          <PairsExplorer
+            counters={detail.counters}
+            synergy={detail.synergy}
+            champWr={role.winrate}
+            totalGames={total}
+            champs={champs}
+            positions={POSITIONS.map((p) => ({ key: p, label: dict.positions[p], icon: positionIcon(p) }))}
+            labels={{
+              counters: C.counters,
+              synergy: C.synergy,
+              common: C.modeCommon,
+              strong: C.modeStrong,
+              weak: C.modeWeak,
+              delta: C.modeDelta,
+              vs: C.vsRole,
+              with: C.withRole,
+              d1: C.delta1,
+              d1Help: C.delta1Help,
+              d2: C.delta2,
+              d2Help: C.delta2Help,
+              pick: C.pickRateShort,
+              games: C.gamesShort,
+            }}
+          />
+        </Card>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="min-w-0 space-y-6">
+          <div id="items" className="scroll-mt-28">
+            <Card title={C.items}>
+              <ItemsExplorer
+                version={data.version}
+                itemNames={itemNames}
+                totalGames={total}
+                labels={{ pick: C.pickRateShort, games: C.gamesShort, minute: C.avgMinute }}
+                tabs={[
+                  { key: "starting", label: C.itemTabs.starting, rows: detail.items.starting.map((s) => ({ key: s.items.join(","), items: s.items, games: s.games, wins: s.wins })) },
+                  { key: "early", label: C.itemTabs.early, rows: itemRows(detail.items.early) },
+                  ...detail.items.byPosition.map((list, i) => ({ key: `p${i}`, label: t(C.itemN1, { n: i + 1 }), rows: itemRows(list) })),
+                  { key: "popular", label: C.itemTabs.popular, rows: itemRows(detail.items.all.slice(0, 24)) },
+                  { key: "winning", label: C.itemTabs.winning, rows: itemRows(winning.slice(0, 24)) },
+                ]}
+              />
+            </Card>
+          </div>
+          <Card title={C.skillsByLevel} help={C.skillsByLevelHelp}>
+            <SkillLevels levels={detail.skillLevels} dict={dict} />
           </Card>
+          <div id="runes" className="scroll-mt-28">
+            <Card title={C.runeStats} help={C.runeStatsHelp}>
+              <RuneStats stats={detail.runeStats} data={data} total={total} />
+            </Card>
+          </div>
+        </div>
+        <aside id="stats" className="scroll-mt-28 space-y-6">
           <Card title={C.stats} help={C.statsHelp}>
             <Stats stats={detail.stats} dict={dict} locale={locale} />
+          </Card>
+          <Card title={C.playerBase} help={C.playerBaseHelp}>
+            <PlayerBase base={detail.playerBase} dict={dict} />
           </Card>
           <Card title={C.bestPlayers} help={C.bestPlayersHelp}>
             <BestPlayers players={detail.bestPlayers} dict={dict} hrefFor={(name, tag) => summonerPath(locale, region, name, tag)} />

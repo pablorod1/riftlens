@@ -120,7 +120,76 @@ export const ddragonImg = {
   spell: (v: string, spellId: string) => `${CDN}/cdn/${v}/img/spell/${spellId}.png`,
   /** Las runas no van versionadas: el icono ya trae la ruta completa. */
   rune: (iconPath: string) => `${CDN}/cdn/img/${iconPath}`,
+  /** Habilidades: nombre de fichero tal cual viene en el JSON del campeón */
+  passive: (v: string, file: string) => `${CDN}/cdn/${v}/img/passive/${file}`,
+  ability: (v: string, file: string) => `${CDN}/cdn/${v}/img/spell/${file}`,
+  /** Arte del campeón (sin versión): splash completo y recorte centrado */
+  splash: (championId: string, skin = 0) => `${CDN}/cdn/img/champion/splash/${championId}_${skin}.jpg`,
+  centered: (championId: string, skin = 0) => `${CDN}/cdn/img/champion/centered/${championId}_${skin}.jpg`,
 };
+
+export interface ChampionAbility {
+  key: "P" | "Q" | "W" | "E" | "R";
+  name: string;
+  /** Texto plano (sin las etiquetas HTML de Data Dragon) */
+  description: string;
+  icon: string;
+  /** Enfriamiento por rango ("8/7/6/5/4"), vacío en la pasiva */
+  cooldown: string;
+}
+
+export interface ChampionLore {
+  abilities: ChampionAbility[];
+  /** Consejos para jugarlo y para jugar contra él (pueden venir vacíos) */
+  allyTips: string[];
+  enemyTips: string[];
+  /** Puntuaciones 0–10 de Riot: ataque, defensa, magia y dificultad */
+  info: { attack: number; defense: number; magic: number; difficulty: number };
+  partype: string;
+}
+
+const plain = (html: string) =>
+  html
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<[^>]+>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+/** Habilidades, consejos y valoración de un campeón (un JSON por campeón en Data Dragon). */
+export async function loadChampionLore(version: string, lang: string, championId: string, fetchImpl: typeof fetch = fetch): Promise<ChampionLore> {
+  type Raw = {
+    data: Record<
+      string,
+      {
+        passive: { name: string; description: string; image: { full: string } };
+        spells: { name: string; description: string; cooldownBurn: string; image: { full: string } }[];
+        allytips: string[];
+        enemytips: string[];
+        info: ChampionLore["info"];
+        partype: string;
+      }
+    >;
+  };
+  const raw = await getJson<Raw>(`${CDN}/cdn/${version}/data/${lang}/champion/${championId}.json`, fetchImpl);
+  const c = Object.values(raw.data)[0]!;
+  const keys = ["Q", "W", "E", "R"] as const;
+  return {
+    abilities: [
+      { key: "P", name: c.passive.name, description: plain(c.passive.description), icon: ddragonImg.passive(version, c.passive.image.full), cooldown: "" },
+      ...c.spells.slice(0, 4).map((sp, i) => ({
+        key: keys[i]!,
+        name: sp.name,
+        description: plain(sp.description),
+        icon: ddragonImg.ability(version, sp.image.full),
+        cooldown: sp.cooldownBurn,
+      })),
+    ],
+    allyTips: (c.allytips ?? []).map(plain).filter(Boolean),
+    enemyTips: (c.enemytips ?? []).map(plain).filter(Boolean),
+    info: c.info,
+    partype: c.partype,
+  };
+}
 
 export interface ItemClasses {
   /** Objetos completos (los que definen una build) */

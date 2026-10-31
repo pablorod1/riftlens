@@ -5,7 +5,7 @@
  */
 import { listValue } from "@duckdb/node-api";
 import { upsertAccounts } from "@riftlens/core";
-import { schema, type Benchmark, type ChampionBuild, type Db } from "@riftlens/db";
+import { schema, type Benchmark, type ChampionBuild, type Db, type MatchupDetail } from "@riftlens/db";
 import { classifyItems, maxOrder, type StaticData } from "@riftlens/riot";
 import { and, eq } from "drizzle-orm";
 import { computeDetails, type DetailRow } from "./detail";
@@ -274,8 +274,39 @@ export async function aggregate(lake: Lake, db: Db, data: StaticData, opts: { pl
     );
     for (const [k, detail] of computeDetails(detailRows, detailBans, tiers, legendary, valid)) build(k).detail = detail;
 
-    const matchupRows = await lake.all<{ champion_id: number; position: string; opponent_id: number; games: bigint; wins: bigint }>(
-      `select a.champion_id, a.position, b.champion_id as opponent_id, count(*) as games, sum(a.win::int) as wins
+    type MatchupSql = {
+      champion_id: number;
+      position: string;
+      opponent_id: number;
+      games: bigint;
+      wins: bigint;
+      tl_games: bigint;
+      gold10: number | null;
+      gold15: number | null;
+      cs15: number | null;
+      xp15: number | null;
+      lead15: bigint;
+      lead15_wins: bigint | null;
+      kills: number | null;
+      deaths: number | null;
+      assists: number | null;
+      damage: number | null;
+      cs: number | null;
+      gold: number | null;
+    };
+    // Ambos con línea temporal hasta el minuto m (las listas de DuckDB empiezan en 1 = minuto 1)
+    const tl = (m: number, col = "gold_at") => `len(a.${col}) >= ${m} and len(b.${col}) >= ${m}`;
+    const matchupRows = await lake.all<MatchupSql>(
+      `select a.champion_id, a.position, b.champion_id as opponent_id, count(*) as games, sum(a.win::int) as wins,
+              count(*) filter (where ${tl(15)}) as tl_games,
+              avg(a.gold_at[10] - b.gold_at[10]) filter (where ${tl(10)}) as gold10,
+              avg(a.gold_at[15] - b.gold_at[15]) filter (where ${tl(15)}) as gold15,
+              avg(a.cs_at[15] - b.cs_at[15]) filter (where ${tl(15, "cs_at")}) as cs15,
+              avg(a.xp_at[15] - b.xp_at[15]) filter (where ${tl(15, "xp_at")}) as xp15,
+              count(*) filter (where ${tl(15)} and a.gold_at[15] > b.gold_at[15]) as lead15,
+              sum(a.win::int) filter (where ${tl(15)} and a.gold_at[15] > b.gold_at[15]) as lead15_wins,
+              avg(a.kills) as kills, avg(a.deaths) as deaths, avg(a.assists) as assists,
+              avg(a.damage) as damage, avg(a.cs) as cs, avg(a.gold) as gold
        from participants a
        join participants b on b.match_id = a.match_id and b.position = a.position and b.team_id <> a.team_id
        join matches m on m.match_id = a.match_id
@@ -284,7 +315,31 @@ export async function aggregate(lake: Lake, db: Db, data: StaticData, opts: { pl
     );
     const matchups = matchupRows
       .filter((r) => valid.has(key(r.champion_id, r.position)))
-      .map((r) => ({ championId: r.champion_id, position: r.position, opponentId: r.opponent_id, games: n(r.games), wins: n(r.wins) }));
+      .map((r) => {
+        const round = (v: number | null, d = 0) => (v === null || Number.isNaN(v) ? null : Math.round(v * 10 ** d) / 10 ** d);
+        return {
+          championId: r.champion_id,
+          position: r.position,
+          opponentId: r.opponent_id,
+          games: n(r.games),
+          wins: n(r.wins),
+          detail: {
+            tlGames: n(r.tl_games),
+            gold10: round(r.gold10),
+            gold15: round(r.gold15),
+            cs15: round(r.cs15, 1),
+            xp15: round(r.xp15),
+            lead15: n(r.lead15),
+            lead15Wins: n(r.lead15_wins ?? 0),
+            kills: round(r.kills, 2) ?? 0,
+            deaths: round(r.deaths, 2) ?? 0,
+            assists: round(r.assists, 2) ?? 0,
+            damage: round(r.damage) ?? 0,
+            cs: round(r.cs, 1) ?? 0,
+            gold: round(r.gold) ?? 0,
+          } satisfies MatchupDetail,
+        };
+      });
 
     await publish(db, { ...opts, bracket, matches, stats, builds, matchups });
     results.push({ bracket, matches, champions: stats.length });

@@ -18,3 +18,13 @@ export function championBySlug(data: StaticData, slug: string) {
 
 /** Primer valor de un searchParam (puede venir repetido). */
 export const param = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
+
+/** Lee ?cmp=jinx,ezreal (slugs de campeón) y devuelve sus ids, sin repetir. */
+export function parseCompare(data: StaticData, raw: string | undefined): number[] {
+  if (!raw) return [];
+  const ids = raw
+    .split(",")
+    .map((s) => championBySlug(data, s.trim())?.key)
+    .filter((id): id is number => id !== undefined);
+  return [...new Set(ids)];
+}

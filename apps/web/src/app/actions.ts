@@ -8,6 +8,7 @@ import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { defaultLocale, isLocale, localePath, t } from "@/i18n/config";
 import { getDictionaryFor } from "@/i18n/server";
+import { exactChampion } from "@/lib/champion-search";
 import { parseRiotIdQuery, regionFromTag, summonerPath } from "@/lib/format";
 import { db, riot } from "@/lib/server";
 import { getStaticData } from "@/lib/static-data";
@@ -20,6 +21,13 @@ export async function searchSummoner(formData: FormData) {
   const region = regionBySlug(fromTag ?? String(formData.get("region") ?? "euw")) ?? regionBySlug("euw")!;
   const parsed = parseRiotIdQuery(q, region.defaultTag);
   if (!parsed) redirect(localePath(locale, "/"));
+  // Sin JS: si lo escrito es el nombre exacto de un campeón, vamos a su ficha
+  const data = await getStaticData(locale);
+  const champ = exactChampion(
+    Object.values(data.champions).map((c) => ({ slug: c.id.toLowerCase(), name: c.name, icon: "" })),
+    q,
+  );
+  if (champ) redirect(localePath(locale, `/champions/${champ.slug}`));
   redirect(summonerPath(locale, region.slug, parsed.gameName, parsed.tagLine));
 }
 

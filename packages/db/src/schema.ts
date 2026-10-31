@@ -288,6 +288,28 @@ export const championBuilds = sqliteTable(
   (t) => [primaryKey({ columns: [t.patch, t.platform, t.bracket, t.championId, t.position] })],
 );
 
+/**
+ * Detalle de un emparejamiento de línea, desde el punto de vista del campeón.
+ * Las diferencias son campeón − rival; las del rival están en la fila inversa.
+ */
+export interface MatchupDetail {
+  /** Partidas con línea temporal de ambos (base de las diferencias por minuto) */
+  tlGames: number;
+  gold10: number | null;
+  gold15: number | null;
+  cs15: number | null;
+  xp15: number | null;
+  /** Partidas en las que iba por delante en oro al minuto 15, y cuántas ganó */
+  lead15: number;
+  lead15Wins: number;
+  kills: number;
+  deaths: number;
+  assists: number;
+  damage: number;
+  cs: number;
+  gold: number;
+}
+
 export const championMatchups = sqliteTable(
   "champion_matchups",
   {
@@ -299,6 +321,8 @@ export const championMatchups = sqliteTable(
     opponentId: integer("opponent_id").notNull(),
     games: integer("games").notNull(),
     wins: integer("wins").notNull(),
+    /** Fase de líneas y medias del campeón en este emparejamiento (null en cálculos antiguos) */
+    detail: text("detail", { mode: "json" }).$type<MatchupDetail>(),
   },
   (t) => [primaryKey({ columns: [t.patch, t.platform, t.bracket, t.championId, t.position, t.opponentId] })],
 );

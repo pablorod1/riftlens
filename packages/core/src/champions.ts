@@ -1,5 +1,5 @@
-import { schema, type ChampionBuild, type Db } from "@riftlens/db";
-import { and, desc, eq } from "drizzle-orm";
+import { schema, type ChampionBuild, type Db, type MatchupDetail } from "@riftlens/db";
+import { and, desc, eq, or } from "drizzle-orm";
 import { shrunkWinrate, tierOf, type Tier } from "./stats";
 
 export const BRACKETS = ["emerald_plus", "diamond_plus", "master_plus"] as const;
@@ -75,6 +75,8 @@ export interface Matchup {
   wins: number;
   winrate: number;
   score: number;
+  /** Fase de líneas y medias en el emparejamiento (si el cálculo es reciente) */
+  detail: MatchupDetail | null;
 }
 
 export async function loadChampion(db: Db, scope: StatsScope, championId: number) {
@@ -99,7 +101,7 @@ export async function loadChampion(db: Db, scope: StatsScope, championId: number
   for (const m of matchups) {
     const list = matchupsBy.get(m.position) ?? [];
     // Encogemos con menos fuerza: los matchups siempre tienen menos partidas
-    list.push({ opponentId: m.opponentId, games: m.games, wins: m.wins, winrate: m.wins / m.games, score: shrunkWinrate(m.wins, m.games, 0.5, 30) });
+    list.push({ opponentId: m.opponentId, games: m.games, wins: m.wins, winrate: m.wins / m.games, score: shrunkWinrate(m.wins, m.games, 0.5, 30), detail: m.detail ?? null });
     matchupsBy.set(m.position, list);
   }
   for (const list of matchupsBy.values()) list.sort((a, b) => b.games - a.games);
@@ -107,3 +109,29 @@ export async function loadChampion(db: Db, scope: StatsScope, championId: number
 }
 
 export type ChampionData = Awaited<ReturnType<typeof loadChampion>>;
+
+/**
+ * Un emparejamiento de línea visto desde los dos lados: la fila del campeón
+ * contra el rival y la inversa (las medias del rival en esa misma partida).
+ */
+export async function loadMatchup(db: Db, scope: StatsScope, championId: number, opponentId: number, position: string) {
+  const rows = await db
+    .select()
+    .from(schema.championMatchups)
+    .where(
+      and(
+        scopeWhere(schema.championMatchups, scope),
+        eq(schema.championMatchups.position, position),
+        or(
+          and(eq(schema.championMatchups.championId, championId), eq(schema.championMatchups.opponentId, opponentId)),
+          and(eq(schema.championMatchups.championId, opponentId), eq(schema.championMatchups.opponentId, championId)),
+        ),
+      ),
+    );
+  const toMatchup = (r: (typeof rows)[number] | undefined, other: number): Matchup | null =>
+    r ? { opponentId: other, games: r.games, wins: r.wins, winrate: r.wins / r.games, score: shrunkWinrate(r.wins, r.games, 0.5, 30), detail: r.detail ?? null } : null;
+  return {
+    mine: toMatchup(rows.find((r) => r.championId === championId), opponentId),
+    theirs: toMatchup(rows.find((r) => r.championId === opponentId), championId),
+  };
+}

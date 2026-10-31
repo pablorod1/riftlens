@@ -6,6 +6,7 @@ import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { t, type Locale } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/dictionaries/es";
+import { matchChampions, type ChampionOption } from "@/lib/champion-search";
 import { parseRiotIdQuery, regionFromTag, summonerPath } from "@/lib/format";
 import { clearRecent, OPEN_SEARCH_EVENT, removeRecent, type RecentSummoner } from "@/lib/recent";
 import { Kbd, SearchGlyph } from "./search-icons";
@@ -17,11 +18,8 @@ interface Props {
   locale: Locale;
   labels: Dictionary["search"];
   regions: Dictionary["regions"];
-  champions: { slug: string; name: string; icon: string }[];
+  champions: ChampionOption[];
 }
-
-/** Normaliza para buscar campeones sin acentos ni signos ("kaisa" encuentra "Kai'Sa"). */
-const norm = (s: string) => s.normalize("NFD").replace(/[^a-z0-9]/gi, "").toLowerCase();
 
 /** Abre la paleta desde cualquier sitio (botón de la cabecera, portada…). */
 export function openSearch() {
@@ -84,11 +82,7 @@ export function CommandPalette({ locale, labels, regions, champions }: Props) {
   const regionInfo = REGIONS.find((r) => r.slug === effectiveRegion) ?? REGIONS[0];
   const parsed = parseRiotIdQuery(query, regionInfo.defaultTag);
   // Sin "#" puede ser un campeón: los que coinciden van primero.
-  const q = norm(query);
-  const champMatches =
-    q.length >= 2 && !query.includes("#")
-      ? champions.filter((c) => norm(c.name).startsWith(q) || c.slug.startsWith(q)).slice(0, 4)
-      : [];
+  const champMatches = query.trim().length >= 2 ? matchChampions(champions, query, 4) : [];
   // Después, buscar el Riot ID escrito y, por último, los recientes.
   // Recientes que coinciden (sin repetir los que ya salen como sugerencia)
   const sameId = (a: { gameName: string; tagLine: string; region: string }, b: { gameName: string; tagLine: string; region: string }) =>
