@@ -34,8 +34,12 @@ const { values } = parseArgs({
     /** Partidas recientes a pedir por jugador */
     "per-player": { type: "string", default: "20" },
     "no-timelines": { type: "boolean", default: false },
-    /** Minutos entre publicaciones de agregados (0 = solo al terminar) */
-    "publish-every": { type: "string", default: "30" },
+    /**
+     * Minutos entre publicaciones de agregados (0 = solo al terminar). Por defecto 30 con
+     * la base de datos local y 720 con Turso: cada publicación reescribe decenas de miles
+     * de filas y el plan gratuito permite 10M filas escritas al mes.
+     */
+    "publish-every": { type: "string" },
     /** Horas entre resiembras de jugadores (tiers al día y jugadores nuevos; 0 = nunca) */
     "reseed-hours": { type: "string", default: "24" },
   },
@@ -121,7 +125,9 @@ try {
   log(`Parche actual ${patch}. Rastreando ${region.slug.toUpperCase()}…`);
 
   const max = Number(values.max);
-  const publishEvery = Number(values["publish-every"]) * 60_000;
+  const remoteDb = (process.env.DATABASE_URL ?? "").startsWith("libsql:");
+  const publishEvery = Number(values["publish-every"] ?? (remoteDb ? 720 : 30)) * 60_000;
+  log(`Publicando agregados cada ${publishEvery / 60_000} min${remoteDb ? " (Turso)" : ""}`);
   const reseedEvery = Number(values["reseed-hours"]) * HOUR;
   let lastPublish = Date.now();
   let lastPatchCheck = Date.now();

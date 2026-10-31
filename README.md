@@ -52,7 +52,7 @@ deploy/launchd/install.sh uninstall
 
 En la VM de producción, `deploy/systemd/riftlens-crawler.service` hace lo mismo con systemd. Necesita una clave de Riot que no caduque (personal o de producción): la de desarrollo dura 24 h y, al caducar, el crawler se queda reintentando hasta que la cambies en `.env`.
 
-El crawler descarga cada partida con su línea temporal (orden de compra, habilidades y curvas para el coach; `--no-timelines` va el doble de rápido sin ellas) y **publica los agregados cada 30 minutos y al parar** (`--publish-every`). Las partidas en bruto se guardan en `data/matches.duckdb`: DuckDB solo admite un proceso a la vez, así que `bun run worker:aggregate` es para cuando el crawler está parado.
+El crawler descarga cada partida con su línea temporal (orden de compra, habilidades y curvas para el coach; `--no-timelines` va el doble de rápido sin ellas) y **publica los agregados al parar y cada 30 minutos con la base de datos local, o cada 12 horas con Turso** (`--publish-every`): cada publicación reescribe decenas de miles de filas y el plan gratuito de Turso permite 10M filas escritas al mes. Las partidas en bruto se guardan en `data/matches.duckdb`: DuckDB solo admite un proceso a la vez, así que `bun run worker:aggregate` es para cuando el crawler está parado.
 
 Con la clave de desarrollo (100 peticiones / 2 min) resolver todos los Riot ID de Maestro+ tarda un rato: el ranking aparece al momento y los nombres se van rellenando.
 
