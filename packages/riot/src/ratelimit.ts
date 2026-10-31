@@ -25,6 +25,22 @@ export function parseRateLimits(spec: string): RateWindow[] {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** Se lanza cuando conseguir hueco llevaría más tiempo del permitido. */
+export class RateLimitWaitError extends Error {
+  constructor(public readonly waitMs: number) {
+    super(`Haría falta esperar ${Math.ceil(waitMs / 1000)} s por el límite de peticiones`);
+    this.name = "RateLimitWaitError";
+  }
+}
+
+/**
+ * Reparte la cuota entre procesos que comparten clave: con share = 0.5 este
+ * proceso solo usa la mitad de cada ventana (mínimo 1 petición).
+ */
+export function scaleWindows(windows: RateWindow[], share: number): RateWindow[] {
+  return windows.map((w) => ({ requests: Math.max(1, Math.floor(w.requests * share)), seconds: w.seconds }));
+}
+
 export class RateLimiter {
   private windows: RateWindow[];
   /** Marcas de tiempo (ms) de las peticiones recientes, ordenadas. */
@@ -47,17 +63,22 @@ export class RateLimiter {
     this.blockedUntil = Math.max(this.blockedUntil, Date.now() + ms);
   }
 
-  /** Espera hasta que haya hueco en todas las ventanas y reserva la petición. */
-  acquire(): Promise<void> {
-    const next = this.queue.then(() => this.waitForSlot());
+  /**
+   * Espera hasta que haya hueco en todas las ventanas y reserva la petición.
+   * Con maxWaitMs, en vez de esperar más de la cuenta lanza RateLimitWaitError.
+   */
+  acquire(maxWaitMs = Infinity): Promise<void> {
+    const deadline = Date.now() + maxWaitMs;
+    const next = this.queue.then(() => this.waitForSlot(deadline));
     this.queue = next.catch(() => {});
     return next;
   }
 
-  private async waitForSlot() {
+  private async waitForSlot(deadline: number) {
     for (;;) {
       const now = Date.now();
       if (now < this.blockedUntil) {
+        if (this.blockedUntil > deadline) throw new RateLimitWaitError(this.blockedUntil - now);
         await sleep(this.blockedUntil - now);
         continue;
       }
@@ -80,6 +101,7 @@ export class RateLimiter {
         this.log.push(now);
         return;
       }
+      if (now + waitMs > deadline) throw new RateLimitWaitError(waitMs);
       await sleep(waitMs);
     }
   }

@@ -14,22 +14,22 @@ export function Winrate({ wins, games, dict }: { wins: number; games: number; di
   const color = wr >= 0.5 ? "var(--color-win)" : "var(--color-loss)";
   return (
     <div
-      className="w-24"
+      className="w-20"
       title={t(dict.profile.ciTooltip, { low: pct(low), high: pct(high), n: games, confidence: dict.profile.confidence[conf] })}
     >
       <div className="tabular flex items-baseline justify-between text-sm">
-        <span className="font-semibold" style={{ color }}>
+        <span className="tabular font-medium" style={{ color }}>
           {pct(wr)}
         </span>
         {games < SMALL_SAMPLE && <span className="text-[10px] uppercase text-faint">±{Math.round(((high - low) / 2) * 100)}</span>}
       </div>
-      <div className="relative mt-1 h-1.5 rounded-full bg-panel-2">
+      <div className="relative mt-1.5 h-1 rounded-full bg-panel-3">
         <div className="absolute inset-y-0 left-1/2 w-px bg-faint" />
         <div
           className="absolute inset-y-0 rounded-full opacity-35"
           style={{ left: `${low * 100}%`, width: `${(high - low) * 100}%`, background: color }}
         />
-        <div className="absolute -top-0.5 h-2.5 w-0.5 rounded" style={{ left: `calc(${wr * 100}% - 1px)`, background: color }} />
+        <div className="absolute -top-[3px] h-2.5 w-0.5 rounded" style={{ left: `calc(${wr * 100}% - 1px)`, background: color }} />
       </div>
     </div>
   );

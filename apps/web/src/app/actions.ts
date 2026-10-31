@@ -2,20 +2,22 @@
 
 import { REFRESH_COOLDOWN_MS, refreshProfile } from "@riftlens/core";
 import { schema } from "@riftlens/db";
-import { regionBySlug, RiotApiError } from "@riftlens/riot";
+import { isRateLimitError, regionBySlug, REGIONS, RiotApiError } from "@riftlens/riot";
 import { and, eq } from "drizzle-orm";
 import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { defaultLocale, isLocale, localePath, t } from "@/i18n/config";
 import { getDictionaryFor } from "@/i18n/server";
-import { parseRiotIdQuery, summonerPath } from "@/lib/format";
+import { parseRiotIdQuery, regionFromTag, summonerPath } from "@/lib/format";
 import { db, riot } from "@/lib/server";
 
 export async function searchSummoner(formData: FormData) {
   const lang = String(formData.get("lang") ?? "");
   const locale = isLocale(lang) ? lang : defaultLocale;
-  const region = regionBySlug(String(formData.get("region") ?? "euw")) ?? regionBySlug("euw")!;
-  const parsed = parseRiotIdQuery(String(formData.get("q") ?? ""), region.defaultTag);
+  const q = String(formData.get("q") ?? "");
+  const fromTag = regionFromTag(q.split("#")[1]?.trim(), REGIONS);
+  const region = regionBySlug(fromTag ?? String(formData.get("region") ?? "euw")) ?? regionBySlug("euw")!;
+  const parsed = parseRiotIdQuery(q, region.defaultTag);
   if (!parsed) redirect(localePath(locale, "/"));
   redirect(summonerPath(locale, region.slug, parsed.gameName, parsed.tagLine));
 }
@@ -43,6 +45,7 @@ export async function updateProfile(_prev: UpdateState, formData: FormData): Pro
     return { status: "ok", message: newMatches ? t(dict.newMatches, { n: newMatches }) : dict.noNew };
   } catch (err) {
     if (err instanceof RiotApiError && err.isAuth) return { status: "error", message: dict.auth };
+    if (isRateLimitError(err)) return { status: "error", message: dict.rateLimited };
     console.error(err);
     return { status: "error", message: dict.failed };
   }

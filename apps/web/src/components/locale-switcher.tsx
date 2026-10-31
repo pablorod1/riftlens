@@ -9,7 +9,7 @@ export function LocaleSwitcher({ current, label }: { current: Locale; label: str
   const pathname = usePathname();
   const rest = pathname.replace(/^\/[^/]+/, "");
   return (
-    <nav aria-label={label} className="flex shrink-0 overflow-hidden rounded-md border border-line text-[11px] font-semibold uppercase">
+    <nav aria-label={label} className="flex shrink-0 items-center gap-0.5 text-[11px] font-medium uppercase">
       {locales.map((l) => (
         <Link
           key={l}
@@ -17,7 +17,7 @@ export function LocaleSwitcher({ current, label }: { current: Locale; label: str
           hrefLang={l}
           title={localeNames[l]}
           aria-current={l === current ? "true" : undefined}
-          className={`px-2 py-1 ${l === current ? "bg-panel-2 text-fg" : "text-faint hover:text-fg"}`}
+          className={`rounded px-1.5 py-1 transition-colors ${l === current ? "text-fg" : "text-faint hover:text-muted"}`}
         >
           {l}
         </Link>

@@ -1,79 +1,66 @@
 import type { ProfileMatch } from "@riftlens/core";
 import { kda } from "@riftlens/core";
-import type { Position } from "@riftlens/riot";
-import Image from "next/image";
 import { t } from "@/i18n/config";
 import type { Dictionary } from "@/i18n/server";
-import { positionIcon } from "@/lib/assets";
 import { fmtKda, pct } from "@/lib/format";
 
-/** Resumen de las últimas partidas (sin remakes). */
-export function RecentSummary({ matches, dict }: { matches: ProfileMatch[]; dict: Dictionary }) {
+/** Tira de forma: las últimas partidas de izquierda (antigua) a derecha (reciente). */
+export function FormStrip({ matches, dict }: { matches: ProfileMatch[]; dict: Dictionary }) {
   const p = dict.profile;
   const valid = matches.filter((m) => !m.match.remake);
   if (!valid.length) return null;
   const wins = valid.filter((m) => m.me.win).length;
-  const sum = valid.reduce(
-    (s, m) => {
-      const teamKills = m.participants.filter((p) => p.teamId === m.me.teamId).reduce((a, p) => a + p.kills, 0);
-      s.k += m.me.kills;
-      s.d += m.me.deaths;
-      s.a += m.me.assists;
-      s.kp += teamKills ? (m.me.kills + m.me.assists) / teamKills : 0;
-      return s;
-    },
-    { k: 0, d: 0, a: 0, kp: 0 },
-  );
   const n = valid.length;
-  const positions = new Map<string, number>();
-  for (const m of valid) if (m.me.position) positions.set(m.me.position, (positions.get(m.me.position) ?? 0) + 1);
-  const topPositions = [...positions.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2);
-
+  const k = valid.reduce((s, m) => s + m.me.kills, 0);
+  const d = valid.reduce((s, m) => s + m.me.deaths, 0);
+  const a = valid.reduce((s, m) => s + m.me.assists, 0);
+  const kp =
+    valid.reduce((s, m) => {
+      const teamKills = m.participants.filter((x) => x.teamId === m.me.teamId).reduce((sum, x) => sum + x.kills, 0);
+      return s + (teamKills ? (m.me.kills + m.me.assists) / teamKills : 0);
+    }, 0) / n;
   const wr = wins / n;
-  const r = 30;
-  const c = 2 * Math.PI * r;
 
   return (
-    <section className="flex flex-wrap items-center gap-6 rounded-xl border border-line bg-panel p-4">
-      <div className="flex items-center gap-3">
-        <svg width="72" height="72" viewBox="0 0 72 72" aria-label={`Winrate ${pct(wr)}`}>
-          <circle cx="36" cy="36" r={r} fill="none" stroke="var(--color-loss)" strokeWidth="7" />
-          <circle
-            cx="36" cy="36" r={r} fill="none" stroke="var(--color-win)" strokeWidth="7"
-            strokeDasharray={`${wr * c} ${c}`} transform="rotate(-90 36 36)"
+    <section className="rounded-2xl border border-line bg-panel px-5 py-4">
+      <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-3">
+        <div>
+          <p className="eyebrow">
+            {p.form} · {t(p.last, { n })}
+          </p>
+          <p className="mt-2 flex items-baseline gap-3">
+            <span className="tabular text-2xl font-semibold" style={{ color: wr >= 0.5 ? "var(--color-win)" : "var(--color-loss)" }}>
+              {pct(wr)}
+            </span>
+            <span className="tabular text-sm text-muted">{t(p.winsLosses, { w: wins, l: n - wins })}</span>
+          </p>
+        </div>
+        <dl className="flex gap-8 text-right">
+          <div>
+            <dt className="eyebrow">KDA</dt>
+            <dd className="tabular mt-2 text-sm">
+              <span className="font-semibold">{fmtKda(kda(k, d, a), p.perfect)}</span>
+              <span className="ml-2 text-faint">
+                {(k / n).toFixed(1)}/{(d / n).toFixed(1)}/{(a / n).toFixed(1)}
+              </span>
+            </dd>
+          </div>
+          <div>
+            <dt className="eyebrow">KP</dt>
+            <dd className="tabular mt-2 text-sm font-semibold">{pct(kp)}</dd>
+          </div>
+        </dl>
+      </div>
+      <ol className="mt-4 flex gap-1" aria-label={p.form}>
+        {[...valid].reverse().map((m) => (
+          <li
+            key={m.match.matchId}
+            title={m.me.win ? p.victory : p.defeat}
+            className="h-5 flex-1 rounded-[3px]"
+            style={{ background: m.me.win ? "var(--color-win)" : "var(--color-loss)", opacity: m.me.win ? 0.85 : 0.55 }}
           />
-          <text x="36" y="40" textAnchor="middle" fontSize="14" fontWeight="700" fill="var(--color-fg)">
-            {pct(wr)}
-          </text>
-        </svg>
-        <div className="text-sm">
-          <p className="text-xs uppercase tracking-wider text-muted">{t(p.last, { n })}</p>
-          <p className="tabular">{t(p.winsLosses, { w: wins, l: n - wins })}</p>
-        </div>
-      </div>
-      <div className="tabular text-sm">
-        <p>
-          {(sum.k / n).toFixed(1)} / <span className="text-loss">{(sum.d / n).toFixed(1)}</span> / {(sum.a / n).toFixed(1)}
-        </p>
-        <p className="text-lg font-bold">{t(p.kda, { kda: fmtKda(kda(sum.k, sum.d, sum.a), p.perfect) })}</p>
-        <p className="text-xs text-muted">{t(p.kp, { pct: pct(sum.kp / n) })}</p>
-      </div>
-      {topPositions.length > 0 && (
-        <div className="flex gap-4">
-          {topPositions.map(([pos, count]) => {
-            const icon = positionIcon(pos);
-            return (
-              <div key={pos} className="flex items-center gap-2 text-sm">
-                {icon && <Image src={icon} alt="" width={22} height={22} />}
-                <div>
-                  <p>{dict.positions[pos as Position] ?? pos}</p>
-                  <p className="tabular text-xs text-muted">{pct(count / n)}</p>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+        ))}
+      </ol>
     </section>
   );
 }

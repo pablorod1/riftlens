@@ -1,28 +1,58 @@
 @import "tailwindcss";
 
+/*
+ * Riftlens: casi monocromo. El color solo aparece cuando aporta información
+ * (victoria/derrota, winrate). Un único acento para acciones y foco.
+ */
 @theme {
-  --color-bg: #0a0e16;
-  --color-panel: #111723;
-  --color-panel-2: #172031;
-  --color-line: #222c40;
-  --color-fg: #e6e9f0;
-  --color-muted: #8b94a9;
-  --color-faint: #5b6478;
-  --color-accent: #35d0c0;
-  --color-accent-strong: #1fb3a4;
-  --color-win: #4c8df6;
-  --color-win-bg: #14223d;
-  --color-loss: #ee5065;
-  --color-loss-bg: #2c1620;
-  --color-remake: #6b7385;
-  --color-gold: #c8aa6e;
+  --color-bg: #09090b;
+  --color-panel: #101013;
+  --color-panel-2: #16161a;
+  --color-panel-3: #1d1d22;
+  --color-line: rgb(255 255 255 / 0.07);
+  --color-line-strong: rgb(255 255 255 / 0.13);
+  --color-fg: #ededf0;
+  --color-muted: #9b9ba6;
+  --color-faint: #63636e;
+  --color-accent: #8ee6d0;
+  --color-accent-strong: #b5f2e2;
+  --color-win: #7ea6ff;
+  --color-win-bg: rgb(126 166 255 / 0.07);
+  --color-loss: #ff7d8a;
+  --color-loss-bg: rgb(255 125 138 / 0.06);
+  --color-remake: #6e6e7a;
+  --color-gold: #d9bf87;
 
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-serif: var(--font-instrument-serif), ui-serif, Georgia, serif;
+
+  --animate-fade-up: fade-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-shimmer: shimmer 1.6s linear infinite;
+  --animate-pop: pop 0.18s cubic-bezier(0.22, 1, 0.36, 1) both;
+
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes shimmer {
+    from { background-position: -400px 0; }
+    to { background-position: 400px 0; }
+  }
+  @keyframes pop {
+    from { opacity: 0; transform: translateY(-6px) scale(0.985); }
+    to { opacity: 1; transform: none; }
+  }
 }
 
 :root {
   color-scheme: dark;
+  interpolate-size: allow-keywords;
+}
+
+html {
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 body {
@@ -30,6 +60,57 @@ body {
   color: var(--color-fg);
 }
 
+@layer base {
+  ::selection {
+    background: rgb(142 230 208 / 0.25);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}
+
 .tabular {
   font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+/* Etiqueta de sección: pequeña, espaciada, discreta */
+.eyebrow {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--color-faint);
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--color-panel) 0%, var(--color-panel-2) 50%, var(--color-panel) 100%);
+  background-size: 800px 100%;
+  animation: var(--animate-shimmer);
+}
+
+/* Desplegable de partida con altura animada */
+details.match::details-content {
+  block-size: 0;
+  overflow: hidden;
+  transition: block-size 0.3s cubic-bezier(0.22, 1, 0.36, 1), content-visibility 0.3s allow-discrete;
+}
+details.match[open]::details-content {
+  block-size: auto;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

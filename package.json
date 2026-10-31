@@ -2,7 +2,10 @@
   "name": "riftlens",
   "private": true,
   "type": "module",
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "packageManager": "bun@1.4.4",
   "scripts": {
     "dev": "bun run --cwd apps/web dev",
@@ -11,7 +14,8 @@
     "db:push": "bun run --cwd packages/db push",
     "db:generate": "bun run --cwd packages/db generate",
     "db:studio": "bun run --cwd packages/db studio",
-    "worker:ladder": "bun run --cwd apps/worker ladder"
+    "worker:ladder": "bun run --cwd apps/worker ladder",
+    "seed:demo": "bun run --cwd apps/worker seed:demo"
   },
   "devDependencies": {
     "@types/node": "22",

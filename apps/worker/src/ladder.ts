@@ -28,7 +28,8 @@ if (!region) {
 }
 
 const db = getDb();
-const riot = riotFromEnv();
+// El worker deja libre el resto de la cuota para la web.
+const riot = riotFromEnv({ share: Number(process.env.RIOT_WORKER_SHARE || 0.5) });
 const intervalMs = Number(values.interval) * 60_000;
 const batch = Number(values.batch);
 const log = (...a: unknown[]) => console.log(new Date().toISOString().slice(11, 19), ...a);

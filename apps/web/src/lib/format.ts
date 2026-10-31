@@ -13,6 +13,16 @@ export function parseRiotIdSlug(slug: string): { gameName: string; tagLine: stri
   return { gameName: decoded.slice(0, i), tagLine: decoded.slice(i + 1) };
 }
 
+/**
+ * Región que sugiere un tag: "#KR1" -> kr, "#EUW" -> euw. Muchos jugadores
+ * conservan el tag de su región, así que ahorra elegirla a mano.
+ */
+export function regionFromTag(tagLine: string | undefined, regions: readonly { slug: string; defaultTag: string }[]) {
+  if (!tagLine) return undefined;
+  const tag = tagLine.toUpperCase();
+  return regions.find((r) => r.defaultTag === tag)?.slug;
+}
+
 /** Texto del buscador: "Nombre#TAG" o solo "Nombre" (usa el tag por defecto). */
 export function parseRiotIdQuery(q: string, defaultTag: string) {
   const [name, tag] = q.split("#").map((s) => s.trim());
@@ -20,8 +30,8 @@ export function parseRiotIdQuery(q: string, defaultTag: string) {
   return { gameName: name, tagLine: tag || defaultTag };
 }
 
-export function timeAgo(ms: number, now: number, locale: Locale) {
-  const rtf = new Intl.RelativeTimeFormat(intlLocale[locale], { numeric: "auto" });
+export function timeAgo(ms: number, now: number, locale: Locale, style: "long" | "short" = "long") {
+  const rtf = new Intl.RelativeTimeFormat(intlLocale[locale], { numeric: "auto", style });
   const s = Math.round((ms - now) / 1000);
   const abs = Math.abs(s);
   if (abs < 60) return rtf.format(s, "second");

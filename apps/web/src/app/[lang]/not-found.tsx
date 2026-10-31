@@ -8,10 +8,11 @@ export default async function NotFound() {
   return (
     <>
       <SiteHeader />
-      <main className="mx-auto max-w-xl flex-1 px-4 py-24 text-center">
-        <h1 className="text-2xl font-bold">{dict.notFound.title}</h1>
-        <p className="mt-2 text-muted">{dict.notFound.text}</p>
-        <Link href={localePath(locale, "/")} className="mt-6 inline-block text-accent hover:underline">
+      <main className="mx-auto flex max-w-xl flex-1 flex-col items-center justify-center px-5 py-28 text-center">
+        <p className="font-serif text-7xl italic text-faint">404</p>
+        <h1 className="mt-4 text-xl font-semibold tracking-tight">{dict.notFound.title}</h1>
+        <p className="mt-2 text-sm leading-relaxed text-muted">{dict.notFound.text}</p>
+        <Link href={localePath(locale, "/")} className="mt-8 rounded-lg border border-line px-4 py-2 text-sm transition-colors hover:border-line-strong">
           {dict.notFound.back}
         </Link>
       </main>

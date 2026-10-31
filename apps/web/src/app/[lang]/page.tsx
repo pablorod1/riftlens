@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { SearchForm } from "@/components/search-form";
-import { Logo, SiteHeader } from "@/components/site-header";
-import { localePath, t } from "@/i18n/config";
+import { HeroSearch } from "@/components/hero-search";
+import { SiteHeader } from "@/components/site-header";
+import { localePath } from "@/i18n/config";
 import { getDictionary, getLocale } from "@/i18n/server";
 
 export default async function Home() {
@@ -10,35 +10,44 @@ export default async function Home() {
   return (
     <>
       <SiteHeader search={false} />
-      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col items-center px-4 pt-20 pb-16 sm:pt-28">
-        <div className="scale-150">
-          <Logo />
-        </div>
-        <h1 className="mt-8 text-center text-3xl font-bold tracking-tight text-balance sm:text-4xl">
-          {h.titleStart} <span className="text-accent">{h.titleAccent}</span>
-        </h1>
-        <p className="mt-3 text-center text-muted text-balance">{h.subtitle}</p>
-        <div className="mt-10 w-full">
-          <SearchForm />
-          <p className="mt-2 text-center text-xs text-faint">{t(dict.search.hint, { example: "Name#EUW" })}</p>
-        </div>
+      <main className="relative flex-1 overflow-hidden">
+        {/* Halo sutil detrás del titular */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0 h-[560px]"
+          style={{ background: "radial-gradient(ellipse 50% 60% at 50% 0%, rgb(142 230 208 / 0.08), transparent 70%)" }}
+        />
+        <section className="relative mx-auto flex max-w-3xl flex-col items-center px-5 pt-24 pb-20 text-center sm:pt-32">
+          <p className="eyebrow animate-fade-up">{h.eyebrow}</p>
+          <h1 className="mt-5 animate-fade-up text-4xl font-semibold tracking-[-0.035em] text-balance sm:text-6xl [animation-delay:60ms]">
+            {h.titleStart}{" "}
+            <span className="font-serif text-[1.08em] font-normal italic tracking-[-0.01em] text-accent-strong">{h.titleAccent}</span>
+          </h1>
+          <p className="mt-5 max-w-xl animate-fade-up text-[15px] leading-relaxed text-muted text-balance [animation-delay:120ms]">
+            {h.subtitle}
+          </p>
+          <div className="mt-12 w-full animate-fade-up text-left [animation-delay:180ms]">
+            <HeroSearch locale={locale} labels={dict.search} regions={dict.regions} />
+          </div>
+        </section>
 
-        <div className="mt-16 grid w-full gap-3 sm:grid-cols-2">
-          {h.features.map((f) => (
-            <div key={f.title} className="rounded-xl border border-line bg-panel p-4">
-              <p className="flex items-center gap-2 font-semibold">
-                {f.title}
-                {!f.ready && (
-                  <span className="rounded bg-panel-2 px-1.5 py-0.5 text-[10px] uppercase text-faint">{dict.nav.soon}</span>
-                )}
-              </p>
-              <p className="mt-1 text-sm text-muted">{f.text}</p>
-            </div>
-          ))}
-        </div>
-        <Link href={localePath(locale, "/rankings/euw")} className="mt-8 text-sm text-accent hover:underline">
-          {h.ladderLink}
-        </Link>
+        <section className="relative mx-auto max-w-6xl px-5 pb-24">
+          <ol className="grid border-t border-line sm:grid-cols-2 lg:grid-cols-4">
+            {h.features.map((f, i) => (
+              <li key={f.title} className="border-b border-line py-6 sm:pr-8 lg:border-b-0 lg:border-r lg:px-6 lg:first:pl-0 lg:last:border-r-0">
+                <p className="tabular text-xs text-faint">0{i + 1}</p>
+                <p className="mt-3 flex items-center gap-2 font-medium">
+                  {f.title}
+                  {!f.ready && <span className="rounded-full border border-line px-2 py-0.5 text-[10px] font-normal text-faint">{dict.nav.soon}</span>}
+                </p>
+                <p className="mt-1.5 text-sm leading-relaxed text-muted">{f.text}</p>
+              </li>
+            ))}
+          </ol>
+          <Link href={localePath(locale, "/rankings/euw")} className="mt-10 inline-flex items-center gap-2 text-sm text-muted transition-colors hover:text-fg">
+            {h.ladderLink}
+          </Link>
+        </section>
       </main>
     </>
   );

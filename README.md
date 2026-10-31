@@ -23,6 +23,12 @@ bun run db:push             # crea data/riftlens.db
 bun run dev                 # http://localhost:3000 (redirige a /en o /es)
 ```
 
+¿Sin clave de Riot? Carga datos ficticios para ver la web:
+
+```bash
+bun run seed:demo           # /es/summoner/euw/Demo-EUW y /es/rankings/euw
+```
+
 Ranking de Maestro+ (el worker lo rellena):
 
 ```bash
@@ -32,6 +38,8 @@ bun run worker:ladder -- --watch            # cada 30 min
 ```
 
 Con la clave de desarrollo (100 peticiones / 2 min) resolver todos los Riot ID de Maestro+ tarda un rato: el ranking aparece al momento y los nombres se van rellenando.
+
+La cuota de la clave es compartida: `RIOT_WEB_SHARE` y `RIOT_WORKER_SHARE` (0.5 por defecto) reparten las peticiones para que el worker nunca deje a la web sin cuota. Si aun así Riot está saturado, la web muestra un aviso en lugar de quedarse cargando (espera máxima de 10 s).
 
 ## Idiomas
 

@@ -5,12 +5,14 @@
   "type": "module",
   "scripts": {
     "ladder": "bun --env-file=../../.env src/ladder.ts",
-    "typecheck": "tsc -p ."
+    "typecheck": "tsc -p .",
+    "seed:demo": "bun --env-file=../../.env src/seed-demo.ts"
   },
   "dependencies": {
     "@riftlens/core": "workspace:*",
     "@riftlens/db": "workspace:*",
-    "@riftlens/riot": "workspace:*"
+    "@riftlens/riot": "workspace:*",
+    "drizzle-orm": "^0.45.4"
   },
   "devDependencies": {
     "@types/bun": "^1.4.4"
