@@ -12,6 +12,11 @@
  *
  * DuckDB solo admite un proceso con el fichero abierto, así que el propio
  * crawler publica los agregados cada --publish-every minutos y al parar.
+ *
+ * Pensado para correr sin vigilancia (launchd/systemd, ver deploy/): cada hora
+ * comprueba si hay parche nuevo y cambia a él, vuelve a sembrar jugadores cada
+ * --reseed-hours y sobrevive a errores puntuales de Riot. Solo sale ante una
+ * clave rechazada (código 2), para que el supervisor lo relance al cambiarla.
  */
 import { getDb } from "@riftlens/db";
 import { APEX_TIERS, latestVersion, loadStaticData, parseTimeline, patchFromVersion, regionBySlug, RiotApiError, riotFromEnv } from "@riftlens/riot";
@@ -31,6 +36,8 @@ const { values } = parseArgs({
     "no-timelines": { type: "boolean", default: false },
     /** Minutos entre publicaciones de agregados (0 = solo al terminar) */
     "publish-every": { type: "string", default: "30" },
+    /** Horas entre resiembras de jugadores (tiers al día y jugadores nuevos; 0 = nunca) */
+    "reseed-hours": { type: "string", default: "24" },
   },
 });
 
@@ -77,65 +84,130 @@ async function publish(patch: string) {
 }
 
 let stopping = false;
-process.on("SIGINT", () => {
-  if (stopping) process.exit(1);
-  stopping = true;
-  log("Parando tras la petición en curso… (Ctrl+C otra vez para forzar)");
-});
+// SIGTERM es como para launchd/systemd: publicamos lo pendiente y salimos
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.on(signal, () => {
+    if (stopping) process.exit(1);
+    stopping = true;
+    log("Parando tras la petición en curso… (Ctrl+C otra vez para forzar)");
+  });
+}
+
+const HOUR = 3600_000;
+/** Espera que se corta en cuanto se pide parar. */
+async function sleep(ms: number) {
+  const end = Date.now() + ms;
+  while (!stopping && Date.now() < end) await new Promise((r) => setTimeout(r, Math.min(1000, end - Date.now())));
+}
+/** Errores que no merece la pena reintentar: la clave no vale. */
+const fatal = (err: unknown) => err instanceof RiotApiError && err.isAuth;
+let failures = 0;
+/** Error puntual (5xx, red, Data Dragon…): espera creciente y seguimos. */
+async function recover(err: unknown, what: string) {
+  if (fatal(err)) throw err;
+  failures++;
+  const wait = Math.min(15 * 60_000, 30_000 * 2 ** Math.min(failures - 1, 5));
+  log(`Error en ${what} (${failures} seguidos), reintento en ${Math.round(wait / 1000)} s:`, err instanceof Error ? err.message : err);
+  await sleep(wait);
+}
 
 try {
-  const patch = patchFromVersion(await latestVersion());
-  if (values.seed || (await lake.stats(region.platform)).players === 0) await seed();
+  let patch = patchFromVersion(await latestVersion());
+  let lastSeed = 0;
+  if (values.seed || (await lake.stats(region.platform)).players === 0) {
+    await seed();
+    lastSeed = Date.now();
+  }
   log(`Parche actual ${patch}. Rastreando ${region.slug.toUpperCase()}…`);
 
-  // Solo partidas recientes: el parche dura ~2 semanas
-  const startTime = Math.floor((Date.now() - 15 * 86400_000) / 1000);
   const max = Number(values.max);
   const publishEvery = Number(values["publish-every"]) * 60_000;
+  const reseedEvery = Number(values["reseed-hours"]) * HOUR;
   let lastPublish = Date.now();
+  let lastPatchCheck = Date.now();
   let saved = 0;
   let savedSincePublish = 0;
 
   while (!stopping && (!max || saved < max)) {
+    // Parche nuevo: publicamos lo que quede del anterior y pasamos al nuevo
+    if (Date.now() - lastPatchCheck >= HOUR) {
+      lastPatchCheck = Date.now();
+      try {
+        const current = patchFromVersion(await latestVersion());
+        if (current !== patch) {
+          if (savedSincePublish) await publish(patch);
+          savedSincePublish = 0;
+          lastPublish = Date.now();
+          log(`Parche nuevo: ${patch} → ${current}`);
+          patch = current;
+          lastSeed = 0;
+        }
+      } catch (err) {
+        await recover(err, "la comprobación de parche");
+      }
+    }
+    if (reseedEvery && Date.now() - lastSeed >= reseedEvery) {
+      try {
+        log(`Resembrando jugadores: ${await seed()}`);
+        lastSeed = Date.now();
+      } catch (err) {
+        await recover(err, "la siembra");
+        continue;
+      }
+    }
+
     const batch = await lake.nextPlayers(region.platform, 10);
     if (!batch.length) {
       log("No hay jugadores. Ejecuta con --seed.");
       break;
     }
+    // Solo partidas recientes (el parche dura ~2 semanas); la ventana avanza con el tiempo
+    const startTime = Math.floor((Date.now() - 15 * 86400_000) / 1000);
     for (const player of batch) {
       if (stopping || (max && saved >= max)) break;
       const bracket = bracketOfTier(player.tier);
       if (!bracket) continue;
-      const ids = await riot.matchIdsByPuuid(region.regional, player.puuid, {
-        queue: 420,
-        type: "ranked",
-        startTime,
-        count: Number(values["per-player"]),
-      });
-      for (const id of await lake.unknownMatchIds(ids)) {
-        if (stopping || (max && saved >= max)) break;
-        try {
-          const m = await riot.match(region.regional, id);
-          const matchPatch = patchFromVersion(m.info.gameVersion);
-          if (matchPatch !== patch) await lake.skip(id, `patch ${matchPatch}`);
-          else if (m.info.participants.some((p) => p.gameEndedInEarlySurrender)) await lake.skip(id, "remake");
-          else {
-            const timeline = values["no-timelines"] ? undefined : parseTimeline(await riot.timeline(region.regional, id));
-            await lake.insertMatch(m, bracket, timeline);
-            saved++;
-            savedSincePublish++;
-            if (saved % 25 === 0) log(`${saved} partidas guardadas`);
+      try {
+        const ids = await riot.matchIdsByPuuid(region.regional, player.puuid, {
+          queue: 420,
+          type: "ranked",
+          startTime,
+          count: Number(values["per-player"]),
+        });
+        for (const id of await lake.unknownMatchIds(ids)) {
+          if (stopping || (max && saved >= max)) break;
+          try {
+            const m = await riot.match(region.regional, id);
+            const matchPatch = patchFromVersion(m.info.gameVersion);
+            if (matchPatch !== patch) await lake.skip(id, `patch ${matchPatch}`);
+            else if (m.info.participants.some((p) => p.gameEndedInEarlySurrender)) await lake.skip(id, "remake");
+            else {
+              const timeline = values["no-timelines"] ? undefined : parseTimeline(await riot.timeline(region.regional, id));
+              await lake.insertMatch(m, bracket, timeline);
+              saved++;
+              savedSincePublish++;
+              if (saved % 25 === 0) log(`${saved} partidas guardadas`);
+            }
+          } catch (err) {
+            if (err instanceof RiotApiError && err.isNotFound) await lake.skip(id, "404");
+            else throw err;
           }
-        } catch (err) {
-          if (err instanceof RiotApiError && err.isNotFound) await lake.skip(id, "404");
-          else throw err;
         }
+        await lake.markCrawled(player.puuid);
+        failures = 0;
+      } catch (err) {
+        // El jugador se queda sin marcar: se reintentará en otra vuelta
+        await recover(err, "el rastreo");
+        continue;
       }
-      await lake.markCrawled(player.puuid);
       if (publishEvery && savedSincePublish && Date.now() - lastPublish >= publishEvery) {
-        await publish(patch);
+        try {
+          await publish(patch);
+          savedSincePublish = 0;
+        } catch (err) {
+          await recover(err, "la publicación");
+        }
         lastPublish = Date.now();
-        savedSincePublish = 0;
       }
     }
   }
@@ -143,9 +215,13 @@ try {
   const s = await lake.stats(region.platform);
   log(`Fin. Esta sesión: ${saved}. En total: ${s.matches} partidas, ${s.players} jugadores.`);
 } catch (err) {
-  if (err instanceof RiotApiError && err.isAuth) console.error("La API de Riot rechaza la clave (401/403). ¿Ha caducado RIOT_API_KEY?");
-  else console.error(err);
-  process.exitCode = 1;
+  if (fatal(err)) {
+    console.error("La API de Riot rechaza la clave (401/403). ¿Ha caducado RIOT_API_KEY?");
+    process.exitCode = 2;
+  } else {
+    console.error(err);
+    process.exitCode = 1;
+  }
 } finally {
   lake.close();
 }

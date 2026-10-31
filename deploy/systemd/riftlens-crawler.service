@@ -1,0 +1,26 @@
+# Crawler de partidas como servicio en la VM (Oracle Cloud Always Free).
+# Ajusta User y las rutas si el repo no está en /opt/riftlens, y luego:
+#   sudo cp deploy/systemd/riftlens-crawler.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now riftlens-crawler
+#   journalctl -u riftlens-crawler -f
+[Unit]
+Description=Riftlens crawler (partidas Solo/Duo -> DuckDB -> Turso)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=riftlens
+WorkingDirectory=/opt/riftlens/apps/worker
+ExecStart=/usr/local/bin/bun --env-file=../../.env src/crawl.ts
+# Se relanza siempre (también si la clave de Riot caduca: reintenta cada 5 min)
+Restart=always
+RestartSec=300
+StartLimitIntervalSec=0
+# Tiempo para publicar los agregados al parar (SIGTERM)
+TimeoutStopSec=120
+KillSignal=SIGTERM
+Nice=10
+
+[Install]
+WantedBy=multi-user.target
