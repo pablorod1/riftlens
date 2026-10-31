@@ -149,12 +149,15 @@ export class Lake {
         const perks = [...(primary?.selections ?? []), ...(sub?.selections ?? [])].map((s) => s.perk);
         const shards = p.perks.statPerks ? [p.perks.statPerks.offense, p.perks.statPerks.flex, p.perks.statPerks.defense] : [];
         await this.conn.run(
-          `insert into participants values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)`,
+          // Las listas van como texto JSON y se convierten en SQL: así una lista vacía
+          // (jugador sin objetos, partida sin fragmentos) no se queda sin tipo.
+          `insert into participants values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+             $13::integer[], $14, $15, $16, $17, $18::integer[], $19::integer[])`,
           [
             metadata.matchId, p.puuid, p.teamId, p.championId, p.teamPosition || "", p.win,
             p.kills, p.deaths, p.assists, p.totalMinionsKilled + p.neutralMinionsKilled, p.goldEarned, p.totalDamageDealtToChampions,
-            listValue([p.item0, p.item1, p.item2, p.item3, p.item4, p.item5].filter(Boolean)),
-            p.summoner1Id, p.summoner2Id, primary?.style ?? 0, sub?.style ?? 0, listValue(perks), listValue(shards),
+            JSON.stringify([p.item0, p.item1, p.item2, p.item3, p.item4, p.item5].filter(Boolean)),
+            p.summoner1Id, p.summoner2Id, primary?.style ?? 0, sub?.style ?? 0, JSON.stringify(perks), JSON.stringify(shards),
           ],
         );
       }
