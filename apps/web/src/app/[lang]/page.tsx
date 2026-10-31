@@ -17,7 +17,7 @@ export default async function Home() {
           className="pointer-events-none absolute inset-x-0 top-0 h-[560px]"
           style={{ background: "radial-gradient(ellipse 50% 60% at 50% 0%, rgb(142 230 208 / 0.08), transparent 70%)" }}
         />
-        <section className="relative mx-auto flex max-w-3xl flex-col items-center px-5 pt-24 pb-20 text-center sm:pt-32">
+        <section className="relative z-10 mx-auto flex max-w-3xl flex-col items-center px-5 pt-24 pb-20 text-center sm:pt-32">
           <p className="eyebrow animate-fade-up">{h.eyebrow}</p>
           <h1 className="mt-5 animate-fade-up text-4xl font-semibold tracking-[-0.035em] text-balance sm:text-6xl [animation-delay:60ms]">
             {h.titleStart}{" "}

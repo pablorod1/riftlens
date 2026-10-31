@@ -107,6 +107,13 @@ export interface ParticipantDto {
   tripleKills: number;
   quadraKills: number;
   pentaKills: number;
+  physicalDamageDealtToChampions?: number;
+  magicDamageDealtToChampions?: number;
+  trueDamageDealtToChampions?: number;
+  totalHeal?: number;
+  largestKillingSpree?: number;
+  firstBloodKill?: boolean;
+  firstBloodAssist?: boolean;
 }
 
 export interface TeamDto {

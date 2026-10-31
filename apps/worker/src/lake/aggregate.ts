@@ -4,9 +4,11 @@
  * datos a medio escribir.
  */
 import { listValue } from "@duckdb/node-api";
+import { upsertAccounts } from "@riftlens/core";
 import { schema, type Benchmark, type ChampionBuild, type Db } from "@riftlens/db";
 import { classifyItems, maxOrder, type StaticData } from "@riftlens/riot";
 import { and, eq } from "drizzle-orm";
+import { computeDetails, type DetailRow } from "./detail";
 import { PUBLISHED_BRACKETS, type Lake, type PublishedBracket } from "./lake";
 
 /** Por debajo de esta cuota de partidas en un rol lo consideramos ruido (off-role). */
@@ -21,6 +23,28 @@ function pushTop<T extends { games: number }>(map: Map<string, T[]>, k: string, 
   list.sort((a, b) => b.games - a.games);
   if (list.length > limit) list.length = limit;
   map.set(k, list);
+}
+
+/**
+ * Sube a la web los Riot IDs que el crawler ha visto y aún no había publicado:
+ * alimentan las sugerencias de búsqueda. Solo escribe jugadores nuevos.
+ */
+export async function publishAccounts(lake: Lake, db: Db, platform: string) {
+  const rows = await lake.all<{ puuid: string; game_name: string; tag_line: string }>(
+    `select p.puuid, any_value(p.game_name) as game_name, any_value(p.tag_line) as tag_line
+     from participants p join matches m on m.match_id = p.match_id
+     where m.platform = $1 and p.game_name is not null and p.tag_line is not null
+       and p.puuid not in (select puuid from published_accounts)
+     group by p.puuid`,
+    [platform],
+  );
+  const CHUNK = 1000;
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const slice = rows.slice(i, i + CHUNK);
+    await upsertAccounts(db, slice.map((r) => ({ puuid: r.puuid, gameName: r.game_name, tagLine: r.tag_line, platform })));
+    await lake.conn.run("insert into published_accounts select unnest($1::varchar[]) on conflict do nothing", [JSON.stringify(slice.map((r) => r.puuid))]);
+  }
+  return rows.length;
 }
 
 export interface AggregateResult {
@@ -229,6 +253,26 @@ export async function aggregate(lake: Lake, db: Db, data: StaticData, opts: { pl
       b.goldCurve.push(Math.round(r.gold));
       if (Number(r.i) === 1) b.curveGames = n(r.games);
     }
+
+    // --- Ficha detallada (explorador de objetos, counters por posición, objetivos…)
+    const detailRows = (
+      await lake.all<DetailRow & { game_creation: bigint | number }>(
+        `select p.match_id, p.puuid, p.team_id, p.champion_id, p.position, p.win, p.kills, p.deaths, p.assists,
+                p.cs, p.gold, p.damage, p.physical, p.magic, p.true_damage, p.heal, p.spree, p.neutral_cs, p.taken,
+                p.spell1, p.spell2, p.primary_style, p.sub_style, p.perks, p.shards, p.purchases, p.purchase_t,
+                p.skill_order, p.game_name, p.tag_line, m.duration, m.game_creation, m.teams
+         from participants p join matches m on m.match_id = p.match_id where ${scope}`,
+        base,
+      )
+    ).map((r) => ({ ...r, game_creation: Number(r.game_creation), perks: [...(r.perks ?? [])], shards: [...(r.shards ?? [])] }));
+    const detailBans = await lake.all<{ match_id: string; champion_id: number }>(
+      `select b.match_id, b.champion_id from bans b join matches m on m.match_id = b.match_id where ${scope}`,
+      base,
+    );
+    const tiers = new Map(
+      (await lake.all<{ puuid: string; tier: string }>(`select puuid, tier from players where platform = $1`, [opts.platform])).map((r) => [r.puuid, r.tier]),
+    );
+    for (const [k, detail] of computeDetails(detailRows, detailBans, tiers, legendary, valid)) build(k).detail = detail;
 
     const matchupRows = await lake.all<{ champion_id: number; position: string; opponent_id: number; games: bigint; wins: bigint }>(
       `select a.champion_id, a.position, b.champion_id as opponent_id, count(*) as games, sum(a.win::int) as wins

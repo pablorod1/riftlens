@@ -35,6 +35,8 @@ export interface StaticData {
   spells: Record<number, { id: string; name: string }>;
   /** id de runa o estilo -> icono y nombre */
   runes: Record<number, { icon: string; name: string }>;
+  /** Ramas de runas con sus filas (la primera fila es la de las claves) */
+  runeTrees: { id: number; name: string; icon: string; slots: number[][] }[];
 }
 
 async function getJson<T>(url: string, fetchImpl: typeof fetch): Promise<T> {
@@ -84,7 +86,7 @@ export async function loadStaticData(
     getJson<RuneJson>(`${base}/runesReforged.json`, fetchImpl),
   ]);
 
-  const data: StaticData = { version: v, champions: {}, items: {}, spells: {}, runes: {} };
+  const data: StaticData = { version: v, champions: {}, items: {}, spells: {}, runes: {}, runeTrees: [] };
   for (const c of Object.values(champs.data)) {
     data.champions[Number(c.key)] = { key: Number(c.key), id: c.id, name: c.name, title: c.title, tags: c.tags };
   }
@@ -104,6 +106,7 @@ export async function loadStaticData(
     data.spells[Number(s.key)] = { id: s.id, name: s.name };
   }
   for (const style of runes) {
+    data.runeTrees.push({ id: style.id, name: style.name, icon: style.icon, slots: style.slots.map((s) => s.runes.map((r) => r.id)) });
     data.runes[style.id] = { icon: style.icon, name: style.name };
     for (const slot of style.slots) for (const r of slot.runes) data.runes[r.id] = { icon: r.icon, name: r.name };
   }
@@ -154,3 +157,30 @@ export function classifyItems(data: StaticData): ItemClasses {
   }
   return { legendary, boots };
 }
+
+/** Fragmentos de estadísticas: tres filas (ataque, flexible, defensa) con sus opciones. */
+export const STAT_SHARD_ROWS: number[][] = [
+  [5008, 5005, 5007],
+  [5008, 5010, 5001],
+  [5011, 5013, 5001],
+];
+
+const SHARD_ICONS: Record<number, string> = {
+  5001: "statmodshealthplusicon",
+  5002: "statmodsarmoricon",
+  5003: "statmodsmagicresicon",
+  5005: "statmodsattackspeedicon",
+  5007: "statmodscdrscalingicon",
+  5008: "statmodsadaptiveforceicon",
+  5010: "statmodsmovementspeedicon",
+  5011: "statmodshealthscalingicon",
+  5012: "statmodsadaptiveforcescalingicon",
+  5013: "statmodstenacityicon",
+};
+
+export const shardIcon = (id: number) =>
+  SHARD_ICONS[id]
+    ? `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/perk-images/statmods/${SHARD_ICONS[id]}.png`
+    : null;
+
+export const minimapImage = (v: string) => `${CDN}/cdn/${v}/img/map/map11.png`;

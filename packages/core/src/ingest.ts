@@ -1,6 +1,7 @@
 import { schema, type Db } from "@riftlens/db";
 import { patchFromVersion, type MatchDto, type ParticipantDto } from "@riftlens/riot";
-import { inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
+import { accountUpserts } from "./search";
 
 type MatchRow = typeof schema.matches.$inferInsert;
 type ParticipantRow = typeof schema.matchParticipants.$inferInsert;
@@ -16,6 +17,11 @@ function largestMultiKill(p: ParticipantDto) {
 export function matchToRows(m: MatchDto): { match: MatchRow; participants: ParticipantRow[] } {
   const { info, metadata } = m;
   const remake = info.participants.some((p) => p.gameEndedInEarlySurrender);
+  // Objetivos por equipo para el resumen de la partida
+  const teams: Record<string, Record<string, number>> = {};
+  for (const t of info.teams ?? []) {
+    teams[String(t.teamId)] = Object.fromEntries(Object.entries(t.objectives ?? {}).map(([k, v]) => [k, v.kills]));
+  }
   const match: MatchRow = {
     matchId: metadata.matchId,
     platform: info.platformId.toLowerCase(),
@@ -24,6 +30,7 @@ export function matchToRows(m: MatchDto): { match: MatchRow; participants: Parti
     gameDuration: info.gameDuration,
     patch: patchFromVersion(info.gameVersion),
     remake,
+    teams,
   };
   const participants = info.participants.map((p): ParticipantRow => {
     const primary = p.perks.styles.find((s) => s.description === "primaryStyle");
@@ -54,11 +61,26 @@ export function matchToRows(m: MatchDto): { match: MatchRow; participants: Parti
       primaryStyle: primary?.style ?? 0,
       subStyle: sub?.style ?? 0,
       largestMultiKill: largestMultiKill(p),
+      wardsPlaced: p.wardsPlaced ?? 0,
+      wardsKilled: p.wardsKilled ?? 0,
+      controlWards: p.visionWardsBoughtInGame ?? 0,
+      perks: [...(primary?.selections ?? []), ...(sub?.selections ?? [])].map((s) => s.perk),
+      shards: p.perks.statPerks ? [p.perks.statPerks.offense, p.perks.statPerks.flex, p.perks.statPerks.defense] : [],
       queueId: info.queueId,
       gameCreation: info.gameCreation,
     };
   });
   return { match, participants };
+}
+
+/** Partidas guardadas antes de tener runas completas, guardianes y objetivos. */
+export async function incompleteMatchIds(db: Db, ids: string[], puuid: string): Promise<string[]> {
+  if (!ids.length) return [];
+  const rows = await db
+    .select({ id: schema.matchParticipants.matchId })
+    .from(schema.matchParticipants)
+    .where(and(inArray(schema.matchParticipants.matchId, ids), eq(schema.matchParticipants.puuid, puuid), eq(schema.matchParticipants.perks, [])));
+  return rows.map((r) => r.id);
 }
 
 /** Devuelve los ids que todavía no tenemos guardados. */
@@ -77,8 +99,26 @@ export async function saveMatches(db: Db, list: MatchDto[]) {
   const statements = list.flatMap((m) => {
     const { match, participants } = matchToRows(m);
     return [
-      db.insert(schema.matches).values(match).onConflictDoNothing(),
-      db.insert(schema.matchParticipants).values(participants).onConflictDoNothing(),
+      // Si la partida ya existía (guardada antes de tener estos campos), completamos los nuevos
+      db.insert(schema.matches).values(match).onConflictDoUpdate({ target: schema.matches.matchId, set: { teams: match.teams } }),
+      db
+        .insert(schema.matchParticipants)
+        .values(participants)
+        .onConflictDoUpdate({
+          target: [schema.matchParticipants.matchId, schema.matchParticipants.puuid],
+          set: {
+            wardsPlaced: sql`excluded.wards_placed`,
+            wardsKilled: sql`excluded.wards_killed`,
+            controlWards: sql`excluded.control_wards`,
+            perks: sql`excluded.perks`,
+            shards: sql`excluded.shards`,
+          },
+        }),
+      // Los 10 jugadores alimentan el índice de sugerencias de búsqueda
+      ...accountUpserts(
+        db,
+        participants.map((p) => ({ puuid: p.puuid, gameName: p.gameName ?? "", tagLine: p.tagLine ?? "", platform: match.platform })),
+      ),
     ];
   });
   // db.batch ejecuta todo en una única transacción (y un único viaje a Turso).

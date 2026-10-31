@@ -1,13 +1,13 @@
 import { schema, type Db } from "@riftlens/db";
 import type { Region, RiotClient } from "@riftlens/riot";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
-import { missingMatchIds, saveMatches } from "./ingest";
+import { incompleteMatchIds, missingMatchIds, saveMatches } from "./ingest";
 
 /** Tiempo mínimo entre dos actualizaciones del mismo perfil. */
 export const REFRESH_COOLDOWN_MS = 2 * 60 * 1000;
 
-export const riotIdKey = (gameName: string, tagLine: string) =>
-  `${gameName.trim()}#${tagLine.trim()}`.toLowerCase();
+import { riotIdKey } from "./keys";
+export { riotIdKey };
 
 export type ProfileRef = { puuid: string } | { gameName: string; tagLine: string };
 
@@ -39,7 +39,9 @@ export async function refreshProfile(
     riot.matchIdsByPuuid(region.regional, puuid, { count: opts.matchCount ?? 20 }),
   ]);
 
-  const missing = await missingMatchIds(db, matchIds);
+  // Nuevas + las guardadas sin los datos de detalle (se completan una sola vez)
+  const fresh = await missingMatchIds(db, matchIds);
+  const missing = [...fresh, ...(await incompleteMatchIds(db, matchIds, puuid))];
   const fetched = await Promise.all(missing.map((id) => riot.match(region.regional, id)));
 
   const now = new Date();
@@ -49,10 +51,10 @@ export async function refreshProfile(
   await db.batch([
     db
       .insert(schema.accounts)
-      .values({ puuid, gameName, tagLine, riotIdKey: riotIdKey(gameName, tagLine), updatedAt: now })
+      .values({ puuid, gameName, tagLine, riotIdKey: riotIdKey(gameName, tagLine), lastPlatform: region.platform, updatedAt: now })
       .onConflictDoUpdate({
         target: schema.accounts.puuid,
-        set: { gameName, tagLine, riotIdKey: riotIdKey(gameName, tagLine), updatedAt: now },
+        set: { gameName, tagLine, riotIdKey: riotIdKey(gameName, tagLine), lastPlatform: region.platform, updatedAt: now },
       }),
     db
       .insert(schema.summoners)
@@ -88,7 +90,7 @@ export async function refreshProfile(
   ]);
   await saveMatches(db, fetched);
 
-  return { puuid, newMatches: fetched.length };
+  return { puuid, newMatches: fresh.length };
 }
 
 /** Busca en la base de datos (sin llamar a Riot) un invocador por Riot ID. */
@@ -177,10 +179,28 @@ export async function loadProfile(db: Db, platform: string, puuid: string, opts:
     byMatch.set(p.matchId, list);
   }
 
+  // Rango Solo/Dúo de los demás jugadores, si lo conocemos (no pedimos nada a Riot por esto)
+  const others = [...new Set(everyone.map((p) => p.puuid))];
+  const rankRows = others.length
+    ? await db
+        .select({ puuid: schema.leagueEntries.puuid, tier: schema.leagueEntries.tier, division: schema.leagueEntries.division })
+        .from(schema.leagueEntries)
+        .where(
+          and(
+            inArray(schema.leagueEntries.puuid, others),
+            eq(schema.leagueEntries.platform, platform),
+            eq(schema.leagueEntries.queueType, "RANKED_SOLO_5x5"),
+          ),
+        )
+    : [];
+  const ranks: Record<string, { tier: string; division: string }> = {};
+  for (const r of rankRows) ranks[r.puuid] = { tier: r.tier, division: r.division };
+
   return {
     account,
     summoner,
     entries,
+    ranks,
     champions: champions as ChampionSummary[],
     matches: recent.map(({ p, m }) => ({
       match: m,
